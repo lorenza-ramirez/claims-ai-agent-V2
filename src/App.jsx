@@ -2,13 +2,13 @@ import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import {
   ShieldPlus, Lightbulb, Calendar, Wrench, BookOpen, ChevronDown, ChevronsDownUp, Bell, Search, Mic, Sparkles,
   Settings, CircleHelp, Users, Ban, Repeat1, Circle, CircleCheck, UserPlus, Split, FilePlus, ListX,
-  X, Command, Info, SearchX, Plus, ClipboardCheck, FileText, Pencil, ShieldCheck, ArrowUp, MailOpen, Wallet, CircleSlash, FileX, Gavel, RefreshCw, LayoutGrid, Trash2, Pause, Play, Zap, Clock, ArrowLeft, ExternalLink, ThumbsUp, ThumbsDown, Link2, Check, Send, MessageSquareText, Copy, Archive, ArchiveRestore, Tag as TagIcon, Receipt, CircleDollarSign, FolderUp, TimerOff, Download, Stethoscope, ArrowRight, CornerDownLeft, MoreHorizontal,
+  X, Command, Info, SearchX, Plus, ClipboardCheck, FileText, Pencil, ShieldCheck, ArrowUp, MailOpen, Wallet, CircleSlash, FileX, Gavel, RefreshCw, LayoutGrid, Trash2, Pause, Play, Zap, Clock, ArrowLeft, ThumbsUp, ThumbsDown, ExternalLink, Check,
 } from "lucide-react";
 
 /* ============================================================
-   AIR prototype: Claims, Agents hub, Agent pages, Agent builder
-   Variant: My Claims context band (Where things stand, Suggested Actions)
-   All data is synthetic. No patient information is used.
+   AIR prototype: Claims (My Claims worklist), Agents hub, Agent pages, Agent builder
+   Clickable demo. All data is synthetic and lives in memory.
+   No patient information is used and nothing is sent anywhere.
    ============================================================ */
 
 /* ---------- Data ---------- */
@@ -30,6 +30,7 @@ const NAV = [
 /* ---------- Synthetic data (no real people) ---------- */
 
 const ME = "lr";
+const MY_PER_GROUP = 3; /* how many claims in each group are yours (the first group gets 6) */
 const AGENTS = [
   { id: "hv", name: "Hana Verdi", init: "HV", color: "green", kind: "person" },
   { id: "ta", name: "Tomas Alder", init: "TA", color: "teal", kind: "person" },
@@ -106,10 +107,6 @@ const TODAY = new Date(2026, 10, 23);
 /* ---------- Agents ---------- */
 /* The claim detail panel opens from the agent page only. Set to true to also open it from the Claims page. */
 const CLAIMS_PANEL = false;
-/* My Claims has no header at the top of the table. Each expanded group shows its own column header instead. Set false to drop that one too. Other tabs keep the top header. */
-const NESTED_HEADER = true;
-/* "More actions" sits in each group's header bar, to the right of the assignee. Set true to show it on every claim row too. */
-const ROW_MORE = false;
 /* Only Medicare Agent is seeded, from the brief. Payer groups for the rule are an assumption. */
 const PAYER_GROUPS = ["Medicare", "Medicaid", "Commercial"];
 const payerGroup = (payer) => (payer.startsWith("MEDICARE") ? "Medicare" : payer.includes("MEDICAID") ? "Medicaid" : "Commercial");
@@ -132,65 +129,11 @@ const SEED_AGENTS = [
 ];
 const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "AG";
 const toAssignee = (a) => ({ id: a.id, name: a.name, init: a.init, color: "agent", kind: "agent" });
-/* My Claims groups: names, chips, amounts and counts from the product screenshots. Every claim in them is yours. */
-const REJ = "Acknowledgement/Rejected for Invalid Information - The claim/encounter has invalid information as specified by the payer";
-const MY_GROUPS = [
-  { key: "m1", status: "Rejections", chips: ["WELLCARE HEALTH PLAN SIMPLE MA", REJ], amount: 15142.0, count: "65", payer: "WELLCARE HEALTH PLAN SIMPLE MA" },
-  { key: "m2", status: "Full Denials", chips: ["WELLMARK BLUE CROSS BLUE SHIELD OF IOWA", "Diagnosis Code", "CO16", "M76"], amount: 9105.0, count: "32", payer: "WELLMARK BLUE CROSS BLUE SHIELD OF IOWA" },
-  { key: "m3", status: "Full Denials", chips: ["IOWA BLUE SHIELD", "Diagnosis Code", "CO16", "M76"], amount: 7048.0, count: "25", payer: "IOWA BLUE SHIELD" },
-  { key: "m4", status: "Full Denials", chips: ["ILLINOIS BLUE SHIELD", "Diagnosis Code", "CO16", "M76"], amount: 6899.0, count: "25", payer: "ILLINOIS BLUE SHIELD" },
-  { key: "m5", status: "Full Denials", chips: ["ANTHEM ILLINOIS BLUE SHIELD", "Medical Necessity", "CO11"], amount: 4297.0, count: "17", payer: "ANTHEM ILLINOIS BLUE SHIELD" },
-  { key: "m6", status: "Payment Posting", chips: ["Manual Review Required", "Negative Payer Balance"], amount: 3575.88, count: "32" },
-  { key: "m7", status: "Full Denials", chips: ["IOWA BLUE SHIELD", "Service Not Covered", "PR167", "N30"], amount: 3320.0, count: "20", payer: "IOWA BLUE SHIELD" },
-  { key: "m8", status: "Rejections", chips: ["WELLCARE HEALTH PLAN SIMPLE MA", REJ], amount: 3313.0, count: "16", payer: "WELLCARE HEALTH PLAN SIMPLE MA" },
-  { key: "m9", status: "Full Denials", chips: ["WELLMARK BLUE CROSS BLUE SHIELD OF SOUTH DAKOTA", "Diagnosis Code", "CO16", "M76"], amount: 2393.0, count: "9", payer: "WELLMARK BLUE CROSS BLUE SHIELD OF SOUTH DAKOTA" },
-  { key: "m10", status: "Full Denials", chips: ["IOWA MEDICARE", "Benefit Maximum", "CO119", ["M25", "N362"]], amount: 2371.0, count: "10", payer: "IOWA MEDICARE" },
-  { key: "m11", status: "Full Denials", chips: ["ANTHEM IOWA BLUE SHIELD", "Diagnosis Code", "CO16", "M76"], amount: 2210.0, count: "8", payer: "ANTHEM IOWA BLUE SHIELD" },
-  { key: "m12", status: "Full Denials", chips: ["IOWA BLUE SHIELD", "Coordination of Benefits", "CO22"], amount: 2059.0, count: "10", payer: "IOWA BLUE SHIELD" },
-  { key: "m13", status: "Full Denials", chips: ["IOWA BLUE SHIELD", "Patient Coverage", ["PR27", "PR59"]], amount: 1844.0, count: "7", payer: "IOWA BLUE SHIELD" },
-  { key: "m14", status: "Payment Posting", chips: ["Manual Review Required", "Balance Exceeds Billed Amount"], amount: 1628.28, count: "14" },
-  { key: "m15", status: "Full Denials", chips: ["AETNA MA", "Diagnosis Code", "CO16", "M76"], amount: 1565.0, count: "8", payer: "AETNA MA" },
-  { key: "m16", status: "Payment Posting", chips: ["Manual Review Required", "Unbalanced Payment Item"], amount: 1395.0, count: "8" },
-  { key: "m17", status: "Payment Posting", chips: ["Awaiting Deposit Verification"], amount: 1259.0, count: "7" },
-  { key: "m18", status: "Rejections", chips: ["WELLCARE HEALTH PLAN SIMPLE MA", REJ], amount: 1236.0, count: "6", payer: "WELLCARE HEALTH PLAN SIMPLE MA" },
-  { key: "m19", status: "Full Denials", chips: ["UNITED HEALTHCARE", "Coordination of Benefits", "PR22", "N479"], amount: 1100.0, count: "5", payer: "UNITED HEALTHCARE" },
-  { key: "m20", status: "Full Denials", chips: ["ILLINOIS BLUE SHIELD", "Diagnosis Code", ["CO16", "COB13"], "M76"], amount: 1090.0, count: "4", payer: "ILLINOIS BLUE SHIELD" },
-  { key: "m21", status: "Full Denials", chips: ["WELLMARK BLUE CROSS BLUE SHIELD OF IOWA", "Invalid Procedure Code", "CO16", ["M51", "N56"]], amount: 1025.0, count: "4", payer: "WELLMARK BLUE CROSS BLUE SHIELD OF IOWA" },
-  { key: "m22", status: "Full Denials", chips: ["UNITED MEDICAL RESOURCES", "Payer Requested Info", ["CO45", "PR227"], "MA92"], amount: 1012.0, count: "5", payer: "UNITED MEDICAL RESOURCES" },
-  { key: "m23", status: "Full Denials", chips: ["ILLINOIS BLUE SHIELD", ["Workers Comp", "Wrong Payer"], "PR19", "N418"], amount: 941.0, count: "3", payer: "ILLINOIS BLUE SHIELD" },
-  { key: "m24", status: "Full Denials", chips: ["MASSACHUSETTS MEDICARE", "Patient Identifier", "CO16", ["MA130", "N382"]], amount: 938.68, count: "5", payer: "MASSACHUSETTS MEDICARE" },
-  { key: "m25", status: "Full Denials", chips: ["MASSACHUSETTS MEDICARE", "Wrong Payer", "OA109"], amount: 926.47, count: "4", payer: "MASSACHUSETTS MEDICARE" },
-  { key: "m26", status: "Full Denials", chips: ["TRICARE - WEST REGION", "Medical Necessity", "CO50", "N180"], amount: 832.0, count: "4", payer: "TRICARE - WEST REGION" },
-  { key: "m27", status: "Payment Posting", chips: ["Manual Review Required", "Other Manual Review"], amount: 808.14, count: "27" },
-  { key: "m28", status: "Full Denials", chips: ["IOWA BLUE SHIELD", "Patient Coverage", ["PR26", "PR59"]], amount: 794.0, count: "3", payer: "IOWA BLUE SHIELD" },
-  { key: "m29", status: "Full Denials", chips: ["IOWA BLUE SHIELD", ["Medical Necessity", "Service Not Covered"], "PR50", "N130"], amount: 783.0, count: "4", payer: "IOWA BLUE SHIELD" },
-  { key: "m30", status: "Full Denials", chips: ["WELLMARK BLUE CROSS BLUE SHIELD OF IOWA", "Patient Coverage", "PR27"], amount: 760.0, count: "3", payer: "WELLMARK BLUE CROSS BLUE SHIELD OF IOWA" },
-  { key: "m31", status: "Full Denials", chips: ["ILLINOIS BLUE SHIELD", ["Diagnosis Code", "Service Not Covered"], "PR96", "N569"], amount: 733.0, count: "3", payer: "ILLINOIS BLUE SHIELD" },
-  { key: "m32", status: "Full Denials", chips: ["IOWA MEDICARE", "Patient Identifier", "CO16", ["MA130", "N382"]], amount: 704.0, count: "3", payer: "IOWA MEDICARE" },
-  { key: "m33", status: "Payment Posting", chips: ["Manual Review Required", ["Balance Exceeds Billed Amount", "Other Manual Review"]], amount: 665.0, count: "3" },
-].map((g) => ({ ...g, mine: true }));
-const ALL_GROUPS = [...GROUPS, ...MY_GROUPS];
-const GROUP_BY_KEY = Object.fromEntries(ALL_GROUPS.map((g) => [g.key, g]));
+const GROUP_BY_KEY = Object.fromEntries(GROUPS.map((g) => [g.key, g]));
 const REVIEWER = "Lena Rowe";
 const WORK_LABEL = { working: "Agent working", ready: "Ready for review" };
 const PROPOSAL_TITLE = { "Portal check": "Proposed action", "Denial fix": "Suggested fix", "Secondary claim draft": "Draft secondary claim", "Posting suggestion": "Suggested posting" };
 const isCode = (x) => /^[A-Z]{1,2}\d+$/.test(x);
-/* Design: the reason and its codes read as one chip, for example "Diagnosis Code: CO16 - M76". The payer chip and all other chips stay. */
-function mergeChips(chips) {
-  const codes = chips.flat().filter(isCode);
-  if (!codes.length) return chips;
-  const li = chips.findIndex((c, i) => i > 0 && (Array.isArray(c) ? c.every((x) => !isCode(x)) : !isCode(c)));
-  if (li < 0) return chips;
-  const out = [];
-  chips.forEach((c, i) => {
-    if (i === li) out.push((Array.isArray(c) ? c.join(" / ") : c) + ": " + codes.join(" - "));
-    else if (typeof c === "string" && isCode(c)) return;
-    else if (Array.isArray(c) && c.every(isCode)) return;
-    else out.push(c);
-  });
-  return out;
-}
-ALL_GROUPS.forEach((g) => { g.shown = mergeChips(g.chips); });
 
 /* Assumed mapping from a claim to the agent's four ways of working. Replace with the real rules. */
 function workType(c) {
@@ -263,7 +206,7 @@ function advance(claims, now, backdate = false, paused = null) {
 function seedState() {
   const now = Date.now();
   const base = makeClaims();
-  const ids = base.filter((c) => !c.mine && payerGroup(c.payer) === "Medicare").map((c) => c.id);
+  const ids = base.filter((c) => payerGroup(c.payer) === "Medicare").map((c) => c.id);
   const a = doAssign(base, ids, "medicare", { auto: true, agentIds: ["medicare"], now, instant: 4, backdate: true, reason: "Assigned by the Medicare rule" });
   const b = advance(a.claims, now, true);
   return { claims: b.claims, activity: [...b.events, ...a.events].sort((x, y) => y.t - x.t) };
@@ -327,46 +270,28 @@ const rel = (t) => {
 
 const mdy = (d) => String(d.getMonth() + 1).padStart(2, "0") + "/" + String(d.getDate()).padStart(2, "0") + "/" + d.getFullYear();
 
-/* One claim per (group, index), so "Load more" can create the next ones. The first two of every group belong to you (My Claims). */
-function makeClaimFor(g, gi, k, forceMine = false) {
-  let seed = 7 + gi * 977 + k * 131;
-  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
-  rnd(); rnd();
-  const pick = (a) => a[Math.floor(rnd() * a.length)];
-  const id = 99000000 - gi * 1000000 - (k + 1) * 3000 + Math.floor(rnd() * 2500);
-  const dos = new Date(TODAY); dos.setDate(dos.getDate() - (5 + (k % 14) * 2 + Math.floor(rnd() * 3)));
-  const r = rnd();
-  const mine = forceMine || !!g.mine;
-  return {
-    id: String(id), idx: k, group: g.key, status: g.status, days: 1 + Math.floor(rnd() * 33), stage: "Payer 1",
-    patient: pick(FN) + " " + pick(LN), provider: pick(PROVIDERS), dos: mdy(dos),
-    payer: k === 0 && ["g6", "g25", "g28"].includes(g.key) ? "MEDICARE PART B" : g.payer || pick(PAYERS),
-    amount: Math.round((200 + rnd() * 3800) * 100) / 100,
-    assignee: mine ? ME : r < 0.28 ? null : AGENTS[Math.floor(rnd() * 7)].id,
-    ...(mine ? { mine: true } : {}),
-  };
-}
 function makeClaims() {
+  let seed = 7;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
   const out = [];
   GROUPS.forEach((g, gi) => {
+    let id = 25290000 - gi * 600000;
     const n = Math.min(8, parseInt(g.count.replace(/,/g, ""), 10));
-    for (let i = 0; i < n; i++) out.push(makeClaimFor(g, gi, i));
+    for (let i = 0; i < n; i++) {
+      id -= 300 + Math.floor(rnd() * 4000);
+      const dos = new Date(TODAY); dos.setDate(dos.getDate() - (5 + i * 2 + Math.floor(rnd() * 3)));
+      const r = rnd();
+      out.push({
+        id: String(id), group: g.key, status: g.status, days: 1 + Math.floor(rnd() * 33), stage: "Payer 1",
+        patient: pick(FN) + " " + pick(LN), provider: pick(PROVIDERS), dos: mdy(dos), payer: i === 0 && ["g6", "g25", "g28"].includes(g.key) ? "MEDICARE PART B" : g.payer || pick(PAYERS),
+        amount: Math.round((200 + rnd() * 3800) * 100) / 100,
+        assignee: i < (gi === 0 ? 6 : MY_PER_GROUP) && g.status !== "Full Denials" ? ME : r < 0.28 ? null : AGENTS[Math.floor(rnd() * 7)].id,
+      });
+    }
   });
-  /* My Claims groups: all of your claims in each group exist from the start */
-  MY_GROUPS.forEach((g, i) => {
-    const gi = GROUPS.length + i, n = parseInt(g.count.replace(/,/g, ""), 10);
-    for (let k = 0; k < n; k++) out.push(makeClaimFor(g, gi, k));
-  });
-  return out;
+  return [...TOP5_CLAIMS, ...out];
 }
-/* How many claims are yours in a group (the number in the My Claims group header). */
-const groupCap = (g) => parseInt(g.count.replace(/,/g, ""), 10);
-function myTotalFor(g, gi) {
-  const cap = groupCap(g);
-  if (g.mine) return cap;
-  return cap <= 8 ? Math.min(cap, 2) : Math.min(cap, [32, 17, 24, 12, 28, 9, 20, 15][gi % 8]);
-}
-const myAmountFor = (g, n) => Math.round((g.amount * n / groupCap(g)) * 100) / 100;
 
 const TABS = [
   { k: "all", label: "All Claims" },
@@ -383,6 +308,143 @@ const COLS = [
 ];
 const SKEL = [[70, 90, 40, 70, 110, 90, 70, 120], [60, 100, 36, 70, 130, 80, 70, 110], [76, 84, 44, 70, 100, 100, 70, 130], [64, 96, 40, 70, 120, 90, 70, 100], [72, 88, 38, 70, 110, 84, 70, 120], [58, 104, 42, 70, 124, 96, 70, 108], [74, 92, 40, 70, 104, 88, 70, 126], [66, 98, 44, 70, 116, 92, 70, 112]];
 const money = (n) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/* ---------- My Claims: summary and a two-step suggested action path for every claim (fake content) ---------- */
+const PRACTICE = "Northgate Therapy Group";
+const longDate = (d) => d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+const parseMDY = (x) => { const [m, d, y] = x.split("/").map(Number); return new Date(y, m - 1, d); };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const tcase = (x) => x.toLowerCase().replace(/\b[a-z]/g, (m) => m.toUpperCase()).replace(/ (Of|And|The) /g, (m) => m.toLowerCase());
+const hashId = (id) => [...String(id)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
+const LINE_SETS = [["97110", "97112", "97140", "97530"], ["97110", "97112", "97530"], ["97110", "97140"], ["97530"], ["97110", "97112", "97140"]];
+const NUMW = ["zero", "one", "two", "three", "four", "five"];
+
+/* The five claims at the top of My Claims follow the design: a denied claim, fix the diagnoses, then resubmit. */
+const TOP_PAYER = "WELLMARK BLUE CROSS BLUE SHIELD OF IOWA";
+const TOP5 = [
+  ["24410231", "Dalia M Okoro", "Noel Tanaka", "10/27/2026", 3, 274.0, 0, 0],
+  ["24398876", "Tobias R Lindqvist", "Ruth Calloway", "10/26/2026", 4, 262.0, 0, 1],
+  ["24377012", "Imani S Castellano", "Ibrahim Sayed", "10/23/2026", 6, 281.0, 1, 2],
+  ["24352694", "Callum J Ashworth", "Petra Lindholm", "10/22/2026", 7, 268.0, 0, 3],
+  ["24331507", "Greta P Duarte", "Gavin Ortiz", "10/20/2026", 9, 275.0, 1, 4],
+];
+const TOP5_CLAIMS = TOP5.map(([id, patient, provider, dos, days, amount, lineSet, variant]) => ({
+  id, group: "g17", status: "Full Denials", days, stage: "Payer 1", patient, provider, dos, payer: TOP_PAYER, amount,
+  assignee: ME, lines: LINE_SETS[lineSet], variant, top: true,
+}));
+
+function claimBrief(c) {
+  const g = GROUP_BY_KEY[c.group], h = hashId(c.id);
+  const lines = c.lines || LINE_SETS[h % LINE_SETS.length];
+  const n = lines.length, nw = NUMW[n], ln = n === 1 ? "line" : "lines";
+  const reason = g.chips.flat().slice(g.payer ? 1 : 0).filter((x) => !isCode(x)).join(" / ").toLowerCase();
+  const payer = tcase(c.payer), short = payer.split(" ")[0];
+  const dos = parseMDY(c.dos), amt = money(c.amount);
+  const sentD = longDate(addDays(dos, 2)), remitD = longDate(addDays(dos, c.top ? 15 : 12 + (h % 5)));
+  const lineTxt = n > 1 ? lines.slice(0, -1).join(", ") + ", and " + lines[n - 1] : lines[0];
+  const billed = PRACTICE + " billed " + payer + " " + amt + " for " + nw + " therapy " + ln + " (" + lineTxt + ") on " + longDate(dos) + ". ";
+  const claimLink = { link: "The initial claim went out on " + sentD };
+  const remitLink = { link: short + "'s remittance dated " + remitD };
+  const st = c.status;
+  const pointers = (from) => lines.slice(0, 2).map((l) => ["Procedure " + l, from, "Pointer 1"]);
+  const resubmit = (from) => ({ title: "Resubmit to " + payer, body: ["Resubmit the corrected claim to ", { bold: payer }, ". It goes out with all " + n + " " + ln + " and nothing else changes."], chips: [["Claim: Status", from, "Resubmitted"]] });
+  const A = (title, body, chips) => ({ title, body, chips });
+  const out = (stand, next, a1, a2) => ({ stand, next, actions: [a1, a2] });
+
+  if (st === "Full Denials" && /diagnosis/.test(reason)) {
+    const V = [
+      ["Remove Diagnoses", " Excludes1 conflict between H81.22 and R42 explains the CO-16/M76 diagnosis denial. The chart documents left peripheral vestibular hypofunction (H81.22), and R42 is an integral symptom, so remove R42 and keep H81.22 as the sole diagnosis. All " + nw + " " + ln + " point only to pointer 1.", ["Claim", "H81.22, R42", "H81.22"]],
+      ["Remove Diagnoses", " M54.6 is a symptom code integral to the documented thoracic strain, and it triggers the CO-16/M76 denial. Remove M54.6 and report S29.012A alone, with all " + nw + " " + ln + " pointing to pointer 1.", ["Claim", "M54.6, S29.012A", "S29.012A"]],
+      ["Update Diagnoses", " R27.0 and R26.89 cannot coexist (Excludes1), and the note documents gait abnormality rather than ataxia. Remove R27.0 and keep R26.89 as the lead diagnosis. Every line points to pointer 1.", ["Claim", "R27.0, R26.89", "R26.89"]],
+      ["Update Diagnoses", " M79.629 is redundant with the more specific left-sided M79.622 and contradicts it. Lead with M79.622 (left upper arm pain, laterality documented in the chart) and remove M79.629. Each line then points to pointer 1.", ["Claim", "M79.629, M79.622", "M79.622"]],
+      ["Update Diagnoses", " S93.401A uses the initial-encounter character, but this is a later visit of therapy for a right ankle sprain. Change it to S93.401D and remove the history code Z87.39. Each line points to pointer 1.", ["Claim", "S93.401A, Z87.39", "S93.401D"]],
+    ][c.variant != null ? c.variant : h % 5];
+    return out(
+      ["This claim was fully denied. " + billed, claimLink, ", and ", remitLink, " denied all " + amt + " under CO-16 with remark M76: the diagnosis codes were missing, incomplete, or invalid. Nothing has been paid."],
+      ["Review the diagnosis codes on all " + nw + " " + ln + ". CO-16 with remark M76 means the payer rejected the claim specifically because the diagnosis information was missing or invalid, not a coverage issue. Correct the diagnosis codes to ensure they are complete and valid for each billed procedure, then resubmit to " + payer + "."],
+      A(V[0], [{ bold: V[0] + ":" }, V[1]], [V[2], ...pointers("Pointers 1,2")]), resubmit("Full Denial"));
+  }
+  if (st === "Full Denials") {
+    const [t1, body1, chip1] = /prior auth/.test(reason)
+      ? ["Request Retro Authorization", "Request a retro-authorization from " + payer + " and attach the number to the claim.", ["Claim: Authorization", "none", "PA-" + c.id.slice(-5)]]
+      : /documentation/.test(reason)
+        ? ["Attach Documentation", "Attach the signed progress notes and set the documentation flag on the claim.", ["Claim: Attachments", "none", "Progress notes (2 pages)"]]
+        : ["Correct Claim", "Correct what the payer flagged on the claim.", ["Claim: Status", "Denied", "Corrected"]];
+    return out(
+      ["This claim was fully denied. " + billed, claimLink, ", and ", remitLink, " denied all " + amt + ". Nothing has been paid."],
+      ["Work the denial reason on all " + nw + " " + ln + ", then resubmit to " + payer + ". Check back in about 14 days for the new remittance."],
+      A(t1, [{ bold: t1 + ":" }, " " + body1], [chip1]), resubmit("Full Denial"));
+  }
+  if (st === "Partial Denials") {
+    const open = money(c.amount * 0.4);
+    return out(
+      ["This claim was paid in part. " + billed, claimLink, ", and ", remitLink, " paid part of it and applied a contractual adjustment (CO-45). " + open + " remains open."],
+      ["Write off the contractual adjustment. No appeal is needed."],
+      A("Write Off Adjustment", [{ bold: "Write Off Adjustment:" }, " Write off " + open + " as a contractual adjustment."], [["Claim: Open balance", open, "$0.00"]]),
+      A("Close Claim", [{ bold: "Close Claim:" }, " Close the claim with a zero balance."], [["Claim: Status", "Partial Denial", "Closed"]]));
+  }
+  if (st === "Rejections") {
+    return out(
+      ["This claim was rejected. " + billed, claimLink, ", and ", { link: short + "'s acknowledgement dated " + remitD }, " rejected it before adjudication for invalid information. Nothing has been paid."],
+      ["Correct the subscriber details (ID, date of birth and name spelling) and resubmit to " + payer + ". A rejection is not a denial, so the timely filing clock keeps running."],
+      A("Correct Subscriber Details", [{ bold: "Correct Subscriber Details:" }, " Update the subscriber ID to match the card on file and the date of birth to match the registration."], [["Claim: Subscriber ID", "W84201", "W84210"], ["Claim: Date of birth", "03/14/1961", "03/14/1951"]]),
+      resubmit("Rejected"));
+  }
+  if (st === "Decision Pending") {
+    return out(
+      [billed, claimLink, ". The payer has not posted a decision, and the EOB is expected by mail. Nothing has been paid."],
+      ["Upload the EOB when it arrives. If it is late, call " + payer + " for the status."],
+      A("Set Follow-up", [{ bold: "Set Follow-up:" }, " Set a follow-up for five business days from today so the claim is checked again."], [["Follow-up", "none", mdy(addDays(TODAY, 7))]]),
+      A("Request EOB by Email", [{ bold: "Request EOB by Email:" }, " Ask for the EOB by email so the decision can be posted without waiting on mail."], [["Claim: EOB request", "none", "Requested by email"]]));
+  }
+  if (st === "Payment Posting") {
+    return out(
+      ["A payment of " + amt + " for this claim arrived on ", { link: "the remittance dated " + remitD }, ". The deposit has not been verified, so nothing is posted yet."],
+      ["Verify the deposit against the remittance, then post the payment."],
+      A("Verify Deposit", [{ bold: "Verify Deposit:" }, " Confirm the deposit with the bank or the lockbox report."], [["Deposit", "Not verified", "Verified"]]),
+      A("Post Payment", [{ bold: "Post Payment:" }, " Post " + amt + " to the claim and close it with a zero balance."], [["Claim: Posted", "$0.00", amt], ["Claim: Open balance", amt, "$0.00"]]));
+  }
+  if (st === "Unsubmitted") {
+    return out(
+      ["This claim has not been sent. " + billed.replace(/ billed.*$/, "") + " billed " + payer + " " + amt + " on " + longDate(dos) + ", but the clearinghouse does not support the payer, so the claim never left the practice."],
+      ["Send the claim on paper, or switch to a supported payer ID. Check the filing deadline so it is not late."],
+      A("Route to Paper Billing", [{ bold: "Route to Paper Billing:" }, " Print the claim form with the attachments that are on file."], [["Claim: Submission method", "Clearinghouse", "Paper"]]),
+      A("Send Claim", [{ bold: "Send Claim:" }, " Mail the claim to " + payer + "."], [["Claim: Status", "Unsubmitted", "Sent"]]));
+  }
+  if (st === "Unresolved Balances") {
+    const bal = money(c.amount * 0.1);
+    return out(
+      ["After payment and adjustments this claim has an open balance of " + bal + ". ", { link: "The account history" }, " shows that no patient statement was sent."],
+      ["Bill the patient, or write off the balance if it is below the practice's write-off limit."],
+      A("Review Balance", [{ bold: "Review Balance:" }, " Confirm the balance is correct after the last payment and adjustment."], [["Claim: Review", "Open", "Reviewed"]]),
+      A("Write Off Balance", [{ bold: "Write Off Balance:" }, " Write off " + bal + ". It is below the practice's write-off limit."], [["Claim: Open balance", bal, "$0.00"]]));
+  }
+  if (st === "Submission Errors") {
+    return out(
+      [payer + " put this claim on hold because the date of service (" + c.dos + ") is within the past six weeks. ", { link: "The hold notice" }, " has the details."],
+      ["No fix is needed on the claim. Release it once six weeks have passed since the date of service."],
+      A("Keep Claim on Hold", [{ bold: "Keep Claim on Hold:" }, " Keep the hold and set a reminder so the claim does not sit past the filing deadline."], [["Reminder", "none", mdy(addDays(dos, 42))]]),
+      A("Release Claim", [{ bold: "Release Claim:" }, " Release the claim to " + payer + "."], [["Claim: Hold", "On hold", "Released"]]));
+  }
+  if (st === "Packet Pending") {
+    return out(
+      ["The medical record packet for this claim has not been received, so the claim cannot be sent. ", { link: "The packet request" }, " shows no reply from the provider's office."],
+      ["Request the packet again and attach it to the claim as soon as it arrives."],
+      A("Request Medical Record Packet", [{ bold: "Request Medical Record Packet:" }, " Send a second request to " + c.provider + "'s office and flag it as urgent."], [["Claim: Packet", "Missing", "Requested again"]]),
+      A("Attach Packet and Send", [{ bold: "Attach Packet and Send:" }, " Attach the packet to the claim and send it."], [["Claim: Packet", "Requested", "Attached"], ["Claim: Status", "Packet Pending", "Sent"]]));
+  }
+  if (st === "Decision Inconclusive") {
+    return out(
+      [{ link: short + "'s remittance dated " + remitD }, " arrived without payment details, so the payment of " + amt + " cannot be matched to this claim."],
+      ["Request a corrected EOB with the payment details by line. Hold posting until it arrives."],
+      A("Request Corrected EOB", [{ bold: "Request Corrected EOB:" }, " Ask " + payer + " for an EOB with payment details by line."], [["EOB: Payment details", "Missing", "Corrected EOB requested"]]),
+      A("Post Payment", [{ bold: "Post Payment:" }, " Post the payment once the corrected EOB arrives."], [["Claim: Posted", "$0.00", amt]]));
+  }
+  return out(["This claim needs attention. ", { link: "The claim detail" }, " has the details."], ["Open the claim and work it in order."],
+    A("Review Claim", [{ bold: "Review Claim:" }, " Review the claim and decide the next step."], [["Claim: Status", "Open", "Reviewed"]]),
+    A("Close Claim", [{ bold: "Close Claim:" }, " Close the claim."], [["Claim: Status", "Reviewed", "Closed"]]));
+}
+
 
 /* Icons exported from Figma (Claims file, Data Table 10836:33553). Fill follows currentColor. */
 const FIG = {
@@ -737,223 +799,20 @@ function FilterRow({ assignees, value, onChange, onHide }) {
   );
 }
 
-
-/* ---------- My Claims context band: fake content, one per group ---------- */
-const longDate = (d) => d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-const parseMDY = (x) => { const [m, d, y] = x.split("/").map(Number); return new Date(y, m - 1, d); };
-const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
-const KEEP = new Set(["MA", "HMO", "PPO", "EPS", "PT", "NF", "WC", "LTD", "LLC"]);
-const tcase = (x) => x.split(/(\s+)/).map((w) => (KEEP.has(w.replace(/[()]/g, "")) ? w : w.toLowerCase().replace(/\b[a-z]/g, (m) => m.toUpperCase()))).join("").replace(/ (Of|And|The) /g, (m) => m.toLowerCase());
-const PRACTICE = "Northgate Therapy Group";
-const CODE_TEXT = { CO16: "claim lacks information or has a billing error", CO11: "diagnosis is inconsistent with the procedure", CO22: "this care may be covered by another payer", CO45: "charge exceeds the fee schedule", CO50: "not deemed a medical necessity", CO119: "benefit maximum for this period has been reached", PR19: "this is a work-related injury", PR22: "this care may be covered by another payer", PR26: "expenses were incurred before coverage began", PR27: "expenses were incurred after coverage ended", PR50: "not deemed a medical necessity", PR59: "processed under multiple procedure rules", PR96: "non-covered charge", PR167: "diagnosis is not covered", PR227: "requested information was not provided", OA109: "claim not covered by this payer, send it to the correct payer", MA130: "claim has incomplete or invalid information", M76: "missing or invalid diagnosis or condition", M51: "missing or invalid procedure codes", N30: "patient is ineligible for this service", N56: "procedure code is not correct for the service", N362: "units of service exceed the maximum", N418: "misrouted claim", N479: "missing explanation of benefits" };
-/* What to fix, by denial reason. Returns { title, sug, chg, act, resub }. Order matters: the first match wins. */
-function denialPlan(reason, who, total) {
-  const r = reason.toLowerCase();
-  const patient = (title, sug, act) => ({ title, sug, act, resub: false, chg: [["Claim: Responsibility", who, "Patient"], ["Claim: Open balance", total, "$0.00 (moved to patient)"]] });
-  if (/diagnosis/.test(r)) return { title: "Remove Diagnoses", sug: "Remove R42, which has an Excludes1 conflict with H81.22. Dizziness is integral to the documented left vestibular neuronitis, which is the confirmed diagnosis and the reason for the vestibular rehab. This addresses the M76 invalid-diagnosis denial. All lines now point only to H81.22, the sole remaining diagnosis.", chg: [["Claim", "H81.22, R42", "H81.22"], ["Procedure 97112", "H81.22, R42", "H81.22"], ["Procedure 97110", "H81.22, R42", "H81.22"], ["Procedure 97530", "H81.22, R42", "H81.22"]], act: "Review the diagnosis codes on the denied lines", resub: true };
-  if (/invalid procedure/.test(r)) return { title: "Correct Procedure Codes", sug: "Replace the invalid procedure code with the code that matches the documented service and the date of service, then resubmit.", chg: [["Procedure code", "Invalid for the service", "Corrected"], ["Claim: Modifier", "none", "GP"]], act: "Correct the procedure codes on the denied lines", resub: true };
-  if (/payer requested/.test(r)) return { title: "Send Requested Information", sug: "Send the records the payer asked for, with a cover letter that names the claim, then resubmit.", chg: [["Claim: Attachments", "none", "Requested records"]], act: "Gather the records the payer requested", resub: true };
-  if (/workers comp/.test(r)) return { title: "Bill Workers Compensation", sug: "Bill the workers compensation carrier on file. " + who + " is not responsible for a work-related injury.", chg: [["Claim: Primary payer", who, "Workers compensation carrier"]], act: "Confirm the workers compensation carrier", pre: true, resub: true, to: "the workers compensation carrier" };
-  if (/patient identifier/.test(r)) return { title: "Correct Patient Identifier", sug: "Correct the member ID and the patient name so they match the insurance card, then resubmit.", chg: [["Claim: Member ID", "Not on file", "Matches the card"], ["Claim: Patient name", "Mismatch", "Matches the card"]], act: "Correct the patient identifiers", resub: true };
-  if (/wrong payer/.test(r)) return { title: "Update Payer", sug: "Move each claim to the payer that covers the patient on the date of service, then resubmit.", chg: [["Claim: Payer", who, "Covering payer"]], act: "Find the payer that covers the patient", pre: true, resub: true, to: "the covering payer" };
-  if (/patient coverage/.test(r)) return { title: "Update Insurance", sug: "Verify eligibility on the date of service and update each claim to the coverage that was active, then resubmit.", chg: [["Claim: Insurance", who, "Active coverage"]], act: "Verify eligibility on the date of service", pre: true, resub: true, to: "the payer with active coverage" };
-  if (/coordination/.test(r)) return { title: "Bill Primary Carrier First", sug: "Bill the carrier that is primary first and keep " + who + " as secondary, then resubmit with the primary remittance attached.", chg: [["Claim: Primary payer", "Other carrier", "Billed first"], ["Claim: Secondary payer", "none", who]], act: "Bill the primary carrier first", pre: true, resub: true, to: "the primary carrier and then to " + who + " as secondary" };
-  if (/medical necessity/.test(r)) return { title: "Prepare Appeal", sug: "Appeal with the clinical notes and cite the payer's coverage policy for the diagnosis and the service.", chg: [["Claim: Appeal", "none", "Level 1 appeal"], ["Claim: Attachments", "none", "Clinical notes"]], act: "Appeal with the clinical notes", resub: true };
-  if (/benefit maximum/.test(r)) return patient("Bill Patient For Benefit Maximum", "The benefit maximum for the period has been reached. Confirm the accumulators on the payer portal, then move the balance to the patient.", "Confirm the benefit maximum and move the balance to the patient");
-  if (/service not covered/.test(r)) return patient("Move Balance to Patient", "The plan does not cover this service. Confirm it on the payer portal, then move the balance to the patient.", "Confirm the service is not covered and move the balance to the patient");
-  if (/prior auth/.test(r)) return { title: "Request Retro Authorization", sug: "Request a retro-authorization from " + who + " and attach the number to each claim before resubmitting.", chg: [["Claim: Authorization", "none", "Retro authorization number"]], act: "Request a retro-authorization and attach the number", resub: true };
-  if (/bundled/.test(r)) return { title: "Add Modifier", sug: "Add modifier 59 to the second procedure so the two lines are not bundled, then resubmit.", chg: [["Procedure: Modifier", "none", "59"]], act: "Add modifier 59 where lines were bundled", resub: true };
-  if (/documentation/.test(r)) return { title: "Attach Documentation", sug: "Attach the signed progress notes and resubmit with the documentation flag set.", chg: [["Claim: Attachments", "none", "Progress notes"]], act: "Attach the signed progress notes", resub: true };
-  if (/contractual/.test(r)) return { title: "Write Off Adjustment", sug: "Write off the contractual adjustment. No appeal is needed.", chg: [["Claim: Open balance", total, "$0.00"]], act: "Write off the contractual adjustment", resub: false };
-  return { title: "Correct Claim", sug: "Correct what the payer flagged and resubmit.", chg: [["Claim: Status", "Denied", "Corrected and resubmitted"]], act: "Correct what the payer flagged", resub: true };
-}
-/* The band summarizes the whole group (all its claims), not one claim. The wording follows the product's claim summaries. */
-function bandFor(g, rows) {
-  const gi = ALL_GROUPS.findIndex((x) => x.key === g.key);
-  const n = Math.max(1, parseInt(String(g.count).replace(/,/g, ""), 10) || rows.length || 1);
-  const one = n === 1;
-  const cl = one ? "1 claim" : n + " claims";
-  const all = one ? "this claim" : "all " + n + " claims";
-  const them = one ? "it" : "them";
-  const total = money(g.total);
-  const payer = g.payer ? tcase(g.payer) : "";
-  const who = payer || "the payer";
-  const flat = GROUP_BY_KEY[g.key].chips.flat();
-  const codes = flat.filter(isCode);
-  const reasonAll = flat.slice(g.payer ? 1 : 0).filter((x) => !isCode(x)).join(" / ");
-  const d = (k) => longDate(addDays(TODAY, -k));
-  const dShort = (k) => addDays(TODAY, -k).toLocaleDateString("en-US", { month: "long", day: "numeric" });
-  const mk = (title, stand, next, suggestion, changes, revise = false) => ({ title, stand, next, suggestion, changes: one ? changes : [["Claims updated", "0", String(n)], ...changes], revise });
-  const st = g.status;
-
-  if (st === "Rejections") return mk("Create Primary Insurance",
-    [PRACTICE + " billed " + who + " " + total + " across " + cl + ", and " + (one ? "it has" : "every one has") + " been rejected on each attempt. ", { link: "The initial submission" }, " and ", { link: "a first resubmission" }, " were rejected because the member ID was not on file. After updating the insurance name, ", { link: "a second resubmission on " + d(34) }, " was also rejected for the same reason: subscriber and subscriber ID not found. On " + d(2) + ", Athelas left a note " + (one ? "on the claim" : "on each claim") + " confirming the rejection and stating that a correction and resubmission would follow within 14 days. No resubmission has gone out since."],
-    ["The open " + (one ? "note is" : "notes are") + " unresolved, and an available suggestion may explain the repeated subscriber ID failures: an insurance-detection check identified Iowa Medicare as an alternate active payer for " + (one ? "this patient" : "these patients") + ", with a different member ID than what has been submitted. Review that suggestion and, if the Iowa Medicare coverage is correct, update " + (one ? "the claim" : "the claims") + " to Iowa Medicare with the detected member ID" + (one ? "" : "s") + " and resubmit. That would address the root cause of all " + (one ? "the" : n) + " rejections."],
-    ["We reviewed " + all + " after " + (one ? "it was" : "they were") + " rejected for coverage-related reasons. ", { bold: "Create Iowa Medicare as the primary insurance" }, " with the member ID found by the insurance-detection check, then resubmit " + them + " to Iowa Medicare."],
-    [["Claim: Primary insurance", who, "Iowa Medicare"], ["Claim: Member ID", "Not on file", "Found by insurance detection"]]);
-
-  if (st === "Full Denials" || st === "Partial Denials") {
-    const prim = codes.find((x) => /^(CO|PR|OA)\d+$/.test(x));
-    const rem = codes.find((x) => /^(M|N|MA)\d+$/.test(x));
-    const pm = prim ? prim + (CODE_TEXT[prim] ? " (" + CODE_TEXT[prim] + ")" : "") : "a denial code";
-    const rm = rem ? ", with remark " + rem + (CODE_TEXT[rem] ? " citing " + CODE_TEXT[rem] : "") : "";
-    const plan = denialPlan(reasonAll, who, total);
-    const next = /diagnosis/.test(reasonAll.toLowerCase())
-      ? "Review the diagnosis codes on all denied lines. Remark " + (rem || "M76") + " points to a problem with the diagnosis or condition information as submitted: either a code is missing, incomplete, or invalid for " + who + ". Correct the diagnosis coding and resubmit to " + who + ". Other claims for " + (one ? "this patient" : "these patients") + " with this payer are also sitting in full denials, so it is worth checking whether the same diagnosis issue is present across those encounters as well."
-      : plan.act + (plan.pre ? " for " : " on ") + all + (plan.resub ? ", then resubmit to " + (plan.to || who) : "") + ". Start with the oldest claims. " + (plan.resub ? "Check back in about 14 days for the new remittance." : "No resubmission is needed.");
-    return mk(plan.title,
-      [{ link: "The initial claim to " + who + " on " + d(40 + gi % 5) }, " billed " + total + " across " + cl + " for " + PRACTICE + ". ", { link: (payer ? payer + "'s" : "The payer's") + " remittance dated " + d(8 + gi % 4) }, " denied " + all + " under " + pm + rm + ". Nothing has been paid, and the full " + total + " remains open."],
-      [next],
-      [plan.sug + (one ? "" : " The same change applies to all " + n + " claims in this group.")], plan.chg);
-  }
-
-  if (st === "Payment Posting") {
-    const has = (re) => re.test(reasonAll.toLowerCase());
-    const sec = money(g.total * 0.2);
-    const sterlingLink = { link: "Sterling's remittance dated " + d(0) };
-    if (has(/awaiting deposit/)) return mk("Verify Deposit and Post",
-      ["Payments for " + cl + " (" + total + ") arrived on ", { link: "the remittance dated " + d(3) }, ". The deposit for " + (one ? "it" : "them") + " has not been verified, so nothing is posted yet. ", { link: "The deposit report" }, " does not list the deposit."],
-      ["Confirm the deposit with the bank or the lockbox report. Once it matches the remittance total, post the payments, oldest first."],
-      ["Verify the deposit against the remittance total, then ", { bold: "post each payment" }, " and close the claims with a zero balance."],
-      [["Deposit", "Not verified", "Verified"], ["Claim: Posted", "$0.00", total]], true);
-    const tailR = has(/negative payer balance/) ? " Posting as it stands would leave a negative payer balance on " + (one ? "the claim." : "each claim.")
-      : has(/exceeds billed/) ? " The payments and adjustments together are more than the billed amount."
-      : has(/unbalanced/) ? " The line payments and adjustments do not add up to the remittance total."
-      : " The remittance was held for a review reason that is not tied to the amounts.";
-    const next = has(/negative payer balance/)
-      ? ["Review ", sterlingLink, " and post the line payments. The remittance also carries a PI-96 adjustment (non-covered charges) with a negative offset; confirm those figures are correct before posting, as doing so will produce a negative secondary balance, which reflects the coinsurance the primary already placed on the patient and should be verified before finalizing."]
-      : has(/exceeds billed/)
-        ? ["Review ", sterlingLink, " and compare the payments and adjustments with the billed amount on " + (one ? "the claim" : "each claim") + ". Correct the adjustment that pushes the total over the billed amount, then post the line payments."]
-        : has(/unbalanced/)
-          ? ["Review ", sterlingLink, " and match each line payment and adjustment to the remittance total. Correct the line that does not balance, then post the line payments."]
-          : ["Open " + (one ? "the claim" : "each claim") + " in the review queue for ", sterlingLink, ", clear the review reason, then post the line payments."];
-    return mk("Posting secondary payments from Sterling Life Medicare Supplement",
-      ["Iowa Medicare paid " + cl + " (" + total + " billed in total) on ", { link: "its remittance dated " + d(10) }, ", now fully posted, and left the patient coinsurance (PR-1). Iowa Medicare automatically forwarded " + (one ? "the claim" : "the claims") + " to Sterling Life Medicare Supplement, and ", sterlingLink, " paid the secondary amounts across the therapy lines. That remittance is in manual review and has not posted." + tailR],
-      next,
-      ["The secondary payments of ", { bold: sec + " across " + cl }, " from Sterling Life Medicare Supplement (", { link: dShort(0) + " remit" }, ") are stuck in review, so " + (one ? "it is" : "they are") + " not posted. The primary payments are already posted (", { link: dShort(10) + " remit" }, "). ", { bold: "Post the secondary line payments on " + (one ? "the claim" : "each claim") }, ", which are different amounts from the primary payments."],
-      [["Claim: Secondary posted", "$0.00", sec], ["Remittance", "In manual review", "Posted"]], true);
-  }
-
-  return mk("Review Claims",
-    [cl.replace(/^./, (m) => m.toUpperCase()) + " (" + total + ") need attention. ", { link: "The claim list" }, " has the details."],
-    ["Open the claims, oldest first, and work them in order."],
-    ["Review " + all + " and decide the next step."], [["Claim: Status", "Open", "Reviewed"]]);
-}
-function ExtLink({ children, onClick }) {
-  const t = String(children), i = t.lastIndexOf(" ");
-  const head = i < 0 ? "" : t.slice(0, i + 1), tail = i < 0 ? t : t.slice(i + 1);
-  return <a className="xlink" href="#" role="button" onClick={(e) => { e.preventDefault(); onClick(); }}>{head}<span className="nw">{tail}<ExternalLink size={12} /></span></a>;
-}
-function ClaimContextCard({ g, rows, st, onVote, onAccept, notify }) {
-  const b = bandFor(g, rows);
-  const seg = (arr) => arr.map((x, i) => (typeof x === "string" ? <React.Fragment key={i}>{x}</React.Fragment> : x.link ? <ExtLink key={i} onClick={notify}>{x.link}</ExtLink> : <b key={i} className="b-strong">{x.bold}</b>));
-  return (
-    <div className="band">
-      <section className="bcard" aria-label="Where things stand">
-        <h3>Where things stand</h3>
-        <p>{seg(b.stand)}</p>
-        <h3>What to do next</h3>
-        <p>{seg(b.next)}</p>
-      </section>
-      <section className="bcard" aria-label="Suggested Actions">
-        <h3>Suggested Actions</h3>
-        <div className="b-head">
-          <span className="b-upd">
-            <b>{b.title}</b>
-            <button className={"vbtn" + (st.vote === "up" ? " on" : "")} aria-label="Helpful" aria-pressed={st.vote === "up"} onClick={() => onVote("up")}><ThumbsUp size={16} /></button>
-            <button className={"vbtn" + (st.vote === "down" ? " on" : "")} aria-label="Not helpful" aria-pressed={st.vote === "down"} onClick={() => onVote("down")}><ThumbsDown size={16} /></button>
-          </span>
-          <span className="b-acts">
-            {b.revise && <button className="btn tert" onClick={notify}><AgentEmblem size={16} animate={false} />Revise</button>}
-            <button className="btn sec" disabled={!!st.accepted} onClick={onAccept}>{st.accepted ? <><Check size={16} />Accepted</> : "Accept"}</button>
-          </span>
-        </div>
-        <p>{seg(b.suggestion)}</p>
-        <div className="b-div" />
-        <div className="b-chg"><b>What will change:</b>{b.changes.map(([l, f, t], i) => <span key={i} className="b-chip">{l}: <s>{f}</s> &rarr; {t}</span>)}</div>
-        <div className="b-foot"><button className="btn tert" onClick={notify}><Link2 size={16} />View Medical Record</button></div>
-      </section>
-    </div>
-  );
-}
-
-function ClaimsTable({ state, groups, sel, open, onOpen, onToggle, onToggleGroup, onToggleAll, onAssignClick, onAgentClick, onOpenClaim, canOpen, tab, dir, fb, onVote, onAccept, onLoadMore, notify, solvedAny, onMoreClick, cOpen, onToggleClaims }) {
+function ClaimsTable({ state, groups, sel, open, onOpen, onToggle, onToggleGroup, onToggleAll, onAssignClick, onAgentClick, onOpenClaim, canOpen, tab, dir }) {
   const rows = groups.flatMap((g) => g.rows);
   const nSel = rows.filter((r) => sel.has(r.id)).length;
-  const mine = tab === "mine";
-  const rowEl = (r, withAssignee = true) => (
-    <tr key={r.id} className={"clrow" + (sel.has(r.id) ? " picked" : "")}>
-      <td className="exp stripe" />
-      <td className="sel"><Cb label={"Select " + r.id} checked={sel.has(r.id)} onChange={() => onToggle(r.id)} /></td>
-      <td>{canOpen ? <button className="idlink" onClick={() => onOpenClaim(r.id)}>{r.id}</button> : r.id}</td>
-      <td><span className="stcell"><Tag status={r.status} row />{r.work && WORK_LABEL[r.work.state] && (canOpen ? <button className="wlink" aria-label={"Open claim " + r.id + ", " + WORK_LABEL[r.work.state]} onClick={() => onOpenClaim(r.id)}><WorkTag state={r.work.state} /></button> : <WorkTag state={r.work.state} />)}</span></td>
-      <td>{r.days}d</td>
-      <td><span className="tag info"><Repeat1 size={16} />{r.stage}</span></td>
-      <td><button className="plink" onClick={canOpen ? () => onOpenClaim(r.id) : notifyNoop}>{r.patient}</button></td>
-      <td>{r.provider}</td>
-      <td>{r.dos}</td>
-      <td><span className="ins"><CircleCheck size={16} />{r.payer}</span></td>
-      {withAssignee && (
-      <td className="asg-c">
-        <span className="asgwrap">
-          {r.assignee
-            ? <button className="asgb" aria-label={"Assigned to " + dir[r.assignee].name + ", change assignee"} onClick={(e) => (dir[r.assignee].kind === "agent" ? onAgentClick(e.currentTarget, r) : onAssignClick(e.currentTarget, [r.id]))}><Avatar agent={dir[r.assignee]} /></button>
-            : <button className="asgb empty" aria-label={"Assign " + r.id} onClick={(e) => onAssignClick(e.currentTarget, [r.id])}><UserPlus size={16} /></button>}
-          {ROW_MORE && <button className="ibtn more" aria-label={"More actions for claim " + r.id} aria-haspopup="menu" onClick={(e) => onMoreClick(e.currentTarget, [r.id])}><MoreHorizontal size={18} /></button>}
-        </span>
-      </td>
-      )}
-    </tr>
-  );
-  /* My Claims: an expanded group shows the context band, then its claims in a framed table with "Load more" */
-  const nested = (g, gSel) => {
-    return (
-      <tr className="clctx" key={g.key + "-ctx"}>
-        <td colSpan={COLS.length + 3}>
-          <div className="ctxwrap">
-            <ClaimContextCard g={g} rows={g.rows} st={fb[g.key] || {}} onVote={(v) => onVote(g.key, v)} onAccept={() => onAccept(g)} notify={notify} />
-            <div className="nest">
-              <button className="nest-h" aria-expanded={!!cOpen[g.key]} aria-controls={"claims-" + g.key} onClick={() => onToggleClaims(g.key)}>
-                <ChevronDown size={18} className={cOpen[g.key] ? "" : "rot"} /><span className="nest-t">Claims</span><span className="nest-c">{g.count}</span>
-              </button>
-              {cOpen[g.key] && (
-              <div className="nest-b" id={"claims-" + g.key}>
-              <table className="cltbl nt">
-                <colgroup><col style={{ width: 14 }} /><col style={{ width: 32 }} />{COLS.map(([k, , w]) => <col key={k} style={{ width: w }} />)}</colgroup>
-                {NESTED_HEADER && (
-                  <thead>
-                    <tr>
-                      <th className="exp" />
-                      <th className="sel"><Cb label={"Select all in " + g.status} checked={g.rows.length > 0 && gSel === g.rows.length} indeterminate={gSel > 0 && gSel < g.rows.length} onChange={() => onToggleGroup(g)} /></th>
-                      {COLS.map(([k, l]) => <th key={k}>{l}</th>)}
-                    </tr>
-                  </thead>
-                )}
-                <tbody>
-                  {g.rows.map((r) => rowEl(r, false))}
-                </tbody>
-              </table>
-              </div>
-              )}
-            </div>
-          </div>
-        </td>
-      </tr>
-    );
-  };
   return (
     <div className="clwrap">
       <table className="cltbl" aria-busy={state === "loading"}>
-        {!mine && (
-          <thead>
-            <tr>
-              <th className="exp" />
-              <th className="sel"><Cb label="Select all claims" checked={rows.length > 0 && nSel === rows.length} indeterminate={nSel > 0 && nSel < rows.length} disabled={state !== "live"} onChange={onToggleAll} /></th>
-              {COLS.map(([k, l, w]) => <th key={k} style={{ minWidth: w, width: w }}>{l}</th>)}
-              <th className="asg-h">Assignee</th>
-            </tr>
-          </thead>
-        )}
+        <thead>
+          <tr>
+            <th className="exp" />
+            <th className="sel"><Cb label="Select all claims" checked={rows.length > 0 && nSel === rows.length} indeterminate={nSel > 0 && nSel < rows.length} disabled={state !== "live"} onChange={onToggleAll} /></th>
+            {COLS.map(([k, l, w]) => <th key={k} style={{ minWidth: w, width: w }}>{l}</th>)}
+            <th className="asg-h">Assignee</th>
+          </tr>
+        </thead>
         <tbody>
           {state === "loading" && (
             <>
@@ -967,34 +826,45 @@ function ClaimsTable({ state, groups, sel, open, onOpen, onToggle, onToggleGroup
               ))}
             </>
           )}
-          {state === "empty" && <tr className="clempty"><td colSpan={COLS.length + 3}><div className="empty"><SearchX size={20} /><b>{tab === "mine" ? (solvedAny ? "You are all caught up." : "No claims are assigned to you.") : "No claims match."}</b><span>{tab === "mine" ? (solvedAny ? "Claims you solve leave this list." : "Claims you assign to yourself show up here.") : "Try a different tab."}</span></div></td></tr>}
+          {state === "empty" && <tr className="clempty"><td colSpan={COLS.length + 3}><div className="empty"><SearchX size={20} /><b>{tab === "mine" ? "No claims are assigned to you." : "No claims match."}</b><span>{tab === "mine" ? "Claims you assign to yourself show up here." : "Try a different tab."}</span></div></td></tr>}
           {state === "live" && groups.map((g) => {
             const isOpen = !!open[g.key];
             const gSel = g.rows.filter((r) => sel.has(r.id)).length;
             return (
               <React.Fragment key={g.key}>
-                <tr className={"clgrp" + (mine ? " nosel" : "") + (isOpen && mine ? " ctxopen" : "")}>
+                <tr className="clgrp">
                   <td className="exp"><button className="ibtn" aria-label={isOpen ? "Collapse group" : "Expand group"} aria-expanded={isOpen} onClick={() => onOpen(g.key)}><ChevronDown size={18} className={isOpen ? "" : "rot"} /></button></td>
-                  {!mine && <td className="sel"><Cb label={"Select all in " + g.status} checked={g.rows.length > 0 && gSel === g.rows.length} indeterminate={gSel > 0 && gSel < g.rows.length} onChange={() => onToggleGroup(g)} /></td>}
-                  <td colSpan={mine ? COLS.length + 1 : COLS.length}>
+                  <td className="sel"><Cb label={"Select all in " + g.status} checked={gSel === g.rows.length} indeterminate={gSel > 0 && gSel < g.rows.length} onChange={() => onToggleGroup(g)} /></td>
+                  <td colSpan={COLS.length}>
                     <div className="clgin">
                       <Tag status={g.status} filled />
-                      {g.shown.map((c, i) => Array.isArray(c)
+                      {g.chips.map((c, i) => Array.isArray(c)
                         ? <span key={i} className="chipset">{c.map((x) => <span key={x} className="chip">{x}</span>)}</span>
                         : <span key={c} className="chip">{c}</span>)}
                       <span className="chip amt"><Circle size={16} />{money(g.total)} | {g.count}</span>
                     </div>
                   </td>
-                  <td className="asg-c">
-                    {mine ? (
-                      <span className="asgwrap hdr">
-                        <button className="btn more" aria-label={"More actions for " + g.status + " group"} aria-haspopup="dialog" disabled={g.rows.length === 0} onClick={(e) => onMoreClick(e.currentTarget, g.rows.map((r) => r.id), g.rows.length)}>More actions<ChevronDown size={16} /></button>
-                        <AssigneeStack dir={dir} ids={g.rows.map((r) => r.assignee).filter(Boolean)} />
-                      </span>
-                    ) : <AssigneeStack dir={dir} ids={g.rows.map((r) => r.assignee).filter(Boolean)} />}
-                  </td>
+                  <td className="asg-c"><AssigneeStack dir={dir} ids={g.rows.map((r) => r.assignee).filter(Boolean)} /></td>
                 </tr>
-                {isOpen && (mine ? nested(g, gSel) : g.rows.map((r) => rowEl(r)))}
+                {isOpen && g.rows.map((r) => (
+                  <tr key={r.id} className={"clrow" + (sel.has(r.id) ? " picked" : "")}>
+                    <td className="exp stripe" />
+                    <td className="sel"><Cb label={"Select " + r.id} checked={sel.has(r.id)} onChange={() => onToggle(r.id)} /></td>
+                    <td>{canOpen ? <button className="idlink" onClick={() => onOpenClaim(r.id)}>{r.id}</button> : r.id}</td>
+                    <td><span className="stcell"><Tag status={r.status} row />{r.work && WORK_LABEL[r.work.state] && (canOpen ? <button className="wlink" aria-label={"Open claim " + r.id + ", " + WORK_LABEL[r.work.state]} onClick={() => onOpenClaim(r.id)}><WorkTag state={r.work.state} /></button> : <WorkTag state={r.work.state} />)}</span></td>
+                    <td>{r.days}d</td>
+                    <td><span className="tag info"><Repeat1 size={16} />{r.stage}</span></td>
+                    <td><button className="plink" onClick={canOpen ? () => onOpenClaim(r.id) : notifyNoop}>{r.patient}</button></td>
+                    <td>{r.provider}</td>
+                    <td>{r.dos}</td>
+                    <td><span className="ins"><CircleCheck size={16} />{r.payer}</span></td>
+                    <td className="asg-c">
+                      {r.assignee
+                        ? <button className="asgb" aria-label={"Assigned to " + dir[r.assignee].name + ", change assignee"} onClick={(e) => (dir[r.assignee].kind === "agent" ? onAgentClick(e.currentTarget, r) : onAssignClick(e.currentTarget, [r.id]))}><Avatar agent={dir[r.assignee]} /></button>
+                        : <button className="asgb empty" aria-label={"Assign " + r.id} onClick={(e) => onAssignClick(e.currentTarget, [r.id])}><UserPlus size={16} /></button>}
+                    </td>
+                  </tr>
+                ))}
               </React.Fragment>
             );
           })}
@@ -1005,93 +875,181 @@ function ClaimsTable({ state, groups, sel, open, onOpen, onToggle, onToggleGroup
 }
 const notifyNoop = (e) => e.stopPropagation();
 
-/* Row "More actions": the two row-level actions that already exist in the Bulk Actions bar */
-/* ---------- More actions: command palette (from the screen recording) ---------- */
-const SINGLE = "Please select claims from a single patient.";
-function paletteSections(n, single) {
-  const cl = n === 1 ? "1 claim" : n + " claims", have = n === 1 ? "has" : "have", are = n === 1 ? "is" : "are";
-  const sp = single ? null : SINGLE;
-  return [
-    { section: null, items: [
-      { id: "submit", label: "Submit Claims", icon: Send },
-      { id: "comment", label: "Comment on Claims", icon: MessageSquareText },
-      { id: "ids", label: "Copy Claim IDs", icon: Copy },
-      { id: "urls", label: "Copy Claim URLs", icon: Link2 },
-      { id: "notbill", label: "Mark as Not Intended to Bill", icon: Archive, disabled: "Cannot mark as not intended to bill because " + cl + " " + have + " a submission that reached the payer." },
-      { id: "bill", label: "Mark as Intended to Bill", icon: ArchiveRestore },
-      { id: "assign", label: "Assign", icon: UserPlus, key: "A" },
-      { id: "tag", label: "Tag", icon: TagIcon, key: "T" },
-      { id: "adjust", label: "Adjust", icon: Receipt },
-      { id: "pr", label: "Push to PR", icon: CircleDollarSign },
-      { id: "next", label: "Push to Next Payer", icon: FolderUp },
-      { id: "defer", label: "Defer", icon: Clock },
-      { id: "undefer", label: "Cancel Deferral", icon: TimerOff, disabled: "Cannot cancel deferral because " + cl + " " + are + " not deferred." },
-      { id: "forms", label: "Download Submission Forms", icon: Download },
-      { id: "ai", label: "Ask Athelas AI", icon: Sparkles },
-    ] },
-    { section: "Insurances", items: [
-      { id: "ins1", label: "Update Primary Insurance", icon: ShieldPlus, disabled: sp },
-      { id: "ins2", label: "Update Secondary Insurance", icon: ShieldPlus, disabled: sp },
-      { id: "ins3", label: "Update Tertiary Insurance", icon: ShieldPlus, disabled: sp },
-    ] },
-    { section: "Providers", items: [
-      { id: "prov1", label: "Update Supervising Provider", icon: Stethoscope },
-      { id: "prov2", label: "Update Referring Provider", icon: Stethoscope },
-    ] },
-    { section: "Prior Authorizations", items: [
-      { id: "pa1", label: "Edit Primary Prior Authorization", icon: ShieldCheck, disabled: sp },
-      { id: "pa2", label: "Edit Secondary Prior Authorization", icon: ShieldCheck, disabled: sp },
-      { id: "pa3", label: "Edit Tertiary Prior Authorization", icon: ShieldCheck, disabled: sp },
-    ] },
-    { section: "Navigation", items: [
-      { id: "recent", label: "See Recently Viewed Claims", icon: ArrowRight },
-    ] },
-  ];
+
+/* ---------- My Claims: flat list, each claim expands to a summary and a two-step suggested action path ---------- */
+function ExtLink({ children, onClick }) {
+  const t = String(children), i = t.lastIndexOf(" ");
+  const head = i < 0 ? "" : t.slice(0, i + 1), tail = i < 0 ? t : t.slice(i + 1);
+  return <a className="xlink" href="#" role="button" onClick={(e) => { e.preventDefault(); onClick(); }}>{head}<span className="nw">{tail}<ExternalLink size={12} /></span></a>;
 }
-function CommandPalette({ badge, n, single, onRun, onClose }) {
-  const [q, setQ] = useState("");
-  const [active, setActive] = useState(null);
-  const listRef = useRef(null);
-  const term = q.trim().toLowerCase();
-  const sections = paletteSections(n, single).map((sec) => ({ ...sec, items: sec.items.filter((i) => i.label.toLowerCase().includes(term)) })).filter((sec) => sec.items.length);
-  const enabled = sections.flatMap((sec) => sec.items).filter((i) => !i.disabled);
-  const cur = enabled.find((i) => i.id === active) || enabled[0] || null;
-  useEffect(() => { const el = listRef.current && listRef.current.querySelector('[data-active="true"]'); if (el) el.scrollIntoView({ block: "nearest" }); }, [cur && cur.id]);
-  const move = (d) => { if (!enabled.length) return; const i = Math.max(0, enabled.findIndex((x) => cur && x.id === cur.id)); setActive(enabled[(i + d + enabled.length) % enabled.length].id); };
-  const onKey = (e) => {
-    if (e.key === "Escape") { e.preventDefault(); onClose(); }
-    else if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
-    else if (e.key === "Enter" && cur) { e.preventDefault(); onRun(cur); }
+const segs = (arr, notify) => arr.map((x, i) => (typeof x === "string" ? <React.Fragment key={i}>{x}</React.Fragment> : x.link ? <ExtLink key={i} onClick={notify}>{x.link}</ExtLink> : <b key={i} className="b-strong">{x.bold}</b>));
+
+function ActionStep({ a, mode, vote, onVote, onAccept, notify }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? a.chips : a.chips.slice(0, 1), extra = a.chips.length - 1;
+  return (
+    <div className={"st st-" + mode}>
+      <span className="st-emb"><AgentEmblem size={20} animate={mode === "active"} /></span>
+      <div className="st-body">
+        {mode === "active" ? (
+          <>
+            <div className="st-t">{a.title}</div>
+            <div className="st-card">
+              <p>{segs(a.body, notify)}</p>
+              <div className="st-foot">
+                <div className="st-chg"><span>What will change:</span>
+                  {shown.map(([l, f, t], i) => <span key={i} className="st-chip">{l}: <s>{f}</s> &rarr; {t}</span>)}
+                  {extra > 0 && <button className="st-chip st-more" aria-expanded={all} onClick={() => setAll(!all)}>{all ? "Show less" : "+" + extra}</button>}
+                </div>
+                <div className="st-acts">
+                  <button className={"vbtn" + (vote === "up" ? " on" : "")} aria-label="Helpful" aria-pressed={vote === "up"} onClick={() => onVote("up")}><ThumbsUp size={16} /></button>
+                  <button className={"vbtn" + (vote === "down" ? " on" : "")} aria-label="Not helpful" aria-pressed={vote === "down"} onClick={() => onVote("down")}><ThumbsDown size={16} /></button>
+                  <button className="vbtn note" aria-label="View medical record" onClick={notify}><FileText size={16} /></button>
+                  <span className="st-sep" />
+                  <button className="btn primary" onClick={onAccept}>Accept</button>
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className={"st-card slim" + (mode === "done" ? " done" : "")}>
+            <span className="st-slim">{mode === "done" && <Check size={16} />}{a.title}</span>
+            {mode === "done" ? <span className="st-ok">Accepted</span> : <button className="btn off" disabled>Accept</button>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- My Claims is clear: celebratory empty state ---------- */
+const MIN_SAVED_PER_CLAIM = 8; /* assumption: about 8 minutes saved per claim (roughly 10 by hand versus 1.5 with suggestions) */
+const CONFETTI = Array.from({ length: 32 }, (_, i) => {
+  const a = (i / 32) * Math.PI * 2 + ((i * 7) % 5) * 0.08, d = 110 + ((i * 41) % 120);
+  return { x: Math.round(Math.cos(a) * d), y: Math.round(Math.sin(a) * d * 0.5 - 28), r: ((i * 67) % 540) - 180, d: ((i % 8) * 0.035).toFixed(2), c: i % 4, w: i % 3 === 0 ? 8 : 6, h: i % 3 === 0 ? 8 : 12, rd: i % 3 === 0 };
+});
+function AllClear({ claims, goneIds, onWorkable }) {
+  const base = claims.filter((c) => (goneIds.length ? goneIds.includes(c.id) : c.assignee === ME));
+  const solved = Math.max(base.length, 1);
+  const mins = solved * MIN_SAVED_PER_CLAIM;
+  const saved = mins >= 60 ? (mins / 60).toFixed(1) + " hrs" : mins + " min";
+  const counts = {};
+  base.forEach((c) => { counts[c.status] = (counts[c.status] || 0) + 1; });
+  const chips = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  return (
+    <div className="clwrap clearwrap">
+      <section className="clear" aria-labelledby="clr-h">
+        <div className="clr-art" aria-hidden="true">
+          {CONFETTI.map((q, i) => <i key={i} className={"cf cf" + q.c + (q.rd ? " rd" : "")} style={{ "--x": q.x + "px", "--y": q.y + "px", "--r": q.r + "deg", "--d": q.d + "s", width: q.w, height: q.h }} />)}
+          <span className="clr-badge"><Check size={34} strokeWidth={3} /></span>
+        </div>
+        <h2 id="clr-h">You cleared My Claims</h2>
+        <p className="clr-sub" role="status">Every claim assigned to you is solved. Take a breather, or pick up more work.</p>
+        <div className="clr-stats">
+          <div className="clr-stat"><span>Claims solved</span><b>{solved}</b></div>
+          <div className="clr-stat"><span>Actions accepted</span><b>{solved * 2}</b></div>
+          <div className="clr-stat"><span>Time saved (est)</span><b>{saved}</b><small>About {MIN_SAVED_PER_CLAIM} min per claim</small></div>
+        </div>
+        {chips.length > 0 && <div className="clr-chips" aria-label="What you solved">{chips.map(([st, n]) => <span key={st} className="clr-chip">{STATUS[st] ? STATUS[st].row : st}<b>{n}</b></span>)}</div>}
+        <button className="btn primary" onClick={onWorkable}>View Workable Claims</button>
+      </section>
+    </div>
+  );
+}
+
+function MyClaimsTable({ state, groups, sel, onToggle, onToggleGroup, onToggleAll, dir, gOpen, onToggleGroupOpen, open, onToggleOpen, step, onAccept, votes, onVote, onAssignClick, notify, allDone, claims, goneIds, onWorkable }) {
+  if (state === "clear" || (state === "empty" && allDone)) return <AllClear claims={claims} goneIds={goneIds} onWorkable={onWorkable} />;
+  const rows = groups.flatMap((g) => g.rows);
+  const nSel = rows.filter((r) => sel.has(r.id)).length;
+  const claimRows = (r) => {
+    const isOpen = !!open[r.id], b = isOpen ? claimBrief(r) : null, st = step[r.id] || 0;
+    return (
+      <React.Fragment key={r.id}>
+        <tr className={"clrow" + (sel.has(r.id) ? " picked" : "")}>
+          <td className="exp stripe"><button className="ibtn" aria-label={isOpen ? "Collapse claim " + r.id : "Expand claim " + r.id} aria-expanded={isOpen} onClick={() => onToggleOpen(r.id)}><ChevronDown size={18} className={isOpen ? "" : "rot"} /></button></td>
+          <td className="sel"><Cb label={"Select " + r.id} checked={sel.has(r.id)} onChange={() => onToggle(r.id)} /></td>
+          <td>{r.id}</td>
+          <td><span className="stcell"><Tag status={r.status} row />{r.work && WORK_LABEL[r.work.state] && <WorkTag state={r.work.state} />}</span></td>
+          <td>{r.days}d</td>
+          <td><span className="tag info"><Repeat1 size={16} />{r.stage}</span></td>
+          <td><button className="plink" onClick={notifyNoop}>{r.patient}</button></td>
+          <td>{r.provider}</td>
+          <td>{r.dos}</td>
+          <td><span className="ins"><CircleCheck size={16} />{r.payer}</span></td>
+          <td className="asg-c"><button className="asgb" aria-label={"Assigned to " + dir[r.assignee].name + ", change assignee"} onClick={(e) => onAssignClick(e.currentTarget, [r.id])}><Avatar agent={dir[r.assignee]} /></button></td>
+        </tr>
+        {isOpen && (
+          <tr className="myctx">
+            <td colSpan={COLS.length + 3}>
+              <div className="mypanel">
+                <div className="mp-l">
+                  <h3>Where things stand</h3><p>{segs(b.stand, notify)}</p>
+                  <h3>What to do next</h3><p>{segs(b.next, notify)}</p>
+                </div>
+                <div className="mp-r" aria-label="Suggested actions">
+                  {b.actions.map((a, i) => (
+                    <ActionStep key={i} a={a} vote={votes[r.id + ":" + i]} onVote={(v) => onVote(r.id + ":" + i, v)} notify={notify}
+                      mode={i === 0 ? (st === 0 ? "active" : "done") : st === 0 ? "waiting" : st === 1 ? "active" : "done"}
+                      onAccept={() => onAccept(r, i, a)} />
+                  ))}
+                </div>
+              </div>
+            </td>
+          </tr>
+        )}
+      </React.Fragment>
+    );
   };
   return (
-    <div className="pal-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="pal" role="dialog" aria-modal="true" aria-label="More actions" onKeyDown={onKey}>
-        <div className="pal-h">
-          <Search size={20} />
-          <input autoFocus aria-label="Search commands" placeholder="Type a command or search..." value={q} onChange={(e) => { setQ(e.target.value); setActive(null); }} />
-          <span className="pal-badge">{badge}</span>
-        </div>
-        <div className="pal-l" ref={listRef} role="listbox" aria-label="Commands">
-          {sections.length === 0 && <div className="pal-none">No commands match "{q}".</div>}
-          {sections.map((sec, si) => (
-            <div key={si}>
-              {sec.section && <div className="pal-sec">{sec.section}</div>}
-              {sec.items.map((it) => {
-                const I = it.icon, on = !!cur && cur.id === it.id;
-                return (
-                  <button key={it.id} role="option" aria-selected={on} aria-disabled={!!it.disabled} data-active={on} className={"pal-i" + (on ? " on" : "") + (it.disabled ? " dis" : "")}
-                    onMouseMove={() => { if (!it.disabled && !on) setActive(it.id); }} onClick={() => { if (!it.disabled) onRun(it); }}>
-                    <I size={20} />
-                    <span className="pal-t"><span className="pal-n">{it.label}</span>{it.disabled && <span className="pal-r">{it.disabled}</span>}</span>
-                    {on && !it.disabled ? <span className="pal-hint"><CornerDownLeft size={14} />Enter</span> : it.key ? <kbd className="pal-key">{it.key}</kbd> : null}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </div>
+    <div className="clwrap">
+      <table className="cltbl mytbl" aria-busy={state === "loading"}>
+        <thead>
+          <tr>
+            <th className="exp" />
+            <th className="sel"><Cb label="Select all claims" checked={rows.length > 0 && nSel === rows.length} indeterminate={nSel > 0 && nSel < rows.length} disabled={state !== "live"} onChange={onToggleAll} /></th>
+            {COLS.map(([k, l, w]) => <th key={k} style={{ minWidth: w, width: w }}>{l}</th>)}
+            <th className="asg-h">Assignee</th>
+          </tr>
+        </thead>
+        <tbody>
+          {state === "loading" && (
+            <>
+              <tr className="clgrp"><td className="exp" /><td className="sel" /><td colSpan={COLS.length}><div className="clgin"><Bar w={28} /><Bar w={110} /><Bar w={180} /><Bar w={130} /></div></td><td className="asg-c"><Bar w={44} /></td></tr>
+              {SKEL.map((r, i) => (
+                <tr key={i} className="clrow skel">
+                  <td className="exp" /><td className="sel" />
+                  {r.map((w, j) => <td key={j}>{j === 0 ? <span className="muted">-</span> : <Bar w={w} />}</td>)}
+                  <td className="asg-c"><Bar w={28} /></td>
+                </tr>
+              ))}
+            </>
+          )}
+          {state === "empty" && <tr className="clempty"><td colSpan={COLS.length + 3}><div className="empty"><SearchX size={20} /><b>No claims are assigned to you.</b><span>Claims you assign to yourself show up here.</span></div></td></tr>}
+          {state === "live" && groups.map((g) => {
+            const isOpen = !!gOpen[g.key];
+            const gSel = g.rows.filter((r) => sel.has(r.id)).length;
+            return (
+              <React.Fragment key={g.key}>
+                <tr className="clgrp">
+                  <td className="exp"><button className="ibtn" aria-label={isOpen ? "Collapse group" : "Expand group"} aria-expanded={isOpen} onClick={() => onToggleGroupOpen(g.key)}><ChevronDown size={18} className={isOpen ? "" : "rot"} /></button></td>
+                  <td className="sel"><Cb label={"Select all in " + g.status} checked={gSel === g.rows.length} indeterminate={gSel > 0 && gSel < g.rows.length} onChange={() => onToggleGroup(g)} /></td>
+                  <td colSpan={COLS.length}>
+                    <div className="clgin">
+                      <Tag status={g.status} filled />
+                      {g.chips.map((c, i) => Array.isArray(c)
+                        ? <span key={i} className="chipset">{c.map((x) => <span key={x} className="chip">{x}</span>)}</span>
+                        : <span key={c} className="chip">{c}</span>)}
+                      <span className="chip amt"><Circle size={16} />{money(g.total)} | {g.count}</span>
+                    </div>
+                  </td>
+                  <td className="asg-c"><AssigneeStack dir={dir} ids={g.rows.map((r) => r.assignee).filter(Boolean)} /></td>
+                </tr>
+                {isOpen && g.rows.map(claimRows)}
+              </React.Fragment>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -1136,7 +1094,7 @@ function AssignPopover({ anchor, ids, claims, list: all, onPick, onClose }) {
   );
 }
 
-function BulkBar({ n, onAssign, onAsk, onMore, onClear }) {
+function BulkBar({ n, onAssign, onAsk, onClear }) {
   return (
     <div className="bulk" role="region" aria-label="Bulk actions">
       <span className="bulk-tab">Bulk Actions</span>
@@ -1144,10 +1102,7 @@ function BulkBar({ n, onAssign, onAsk, onMore, onClear }) {
       <span className="bulk-sep" />
       <button className="bulk-btn" data-assign-anchor onClick={(e) => onAssign(e.currentTarget)}><UserPlus size={16} />Assign</button>
       <button className="bulk-btn" onClick={onAsk}><Sparkles size={16} />Ask Athelas AI</button>
-      <span className="tipwrap">
-        <button className="bulk-btn bulk-more" aria-haspopup="dialog" onClick={(e) => onMore(e.currentTarget)}><Command size={16} />More Actions</button>
-        <span className="tip" role="tooltip">More Actions <kbd>&#8984;</kbd><kbd>K</kbd></span>
-      </span>
+      <button className="bulk-btn" onClick={onAsk}><Command size={16} />More Actions</button>
       <button className="bulk-x" aria-label="Clear selection" onClick={onClear}><X size={18} /></button>
     </div>
   );
@@ -1158,13 +1113,13 @@ function DemoSwitch({ value, onChange }) {
     <label className="demo">
       <span>Demo state</span>
       <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Demo state">
-        <option value="live">Live data</option><option value="loading">Loading</option><option value="empty">Empty</option><option value="error">Error</option>
+        <option value="live">Live data</option><option value="loading">Loading</option><option value="empty">Empty</option><option value="clear">All clear</option><option value="error">Error</option>
       </select>
     </label>
   );
 }
 
-function ClaimsPage({ notify, claims, agents, assign, review, editProposal, sendChat, intent, clearIntent, goAgent, onLoadMore, solved, onSolve, onAccepted }) {
+function ClaimsPage({ notify, claims, agents, assign, review, editProposal, sendChat, intent, clearIntent, goAgent, myStep, onMyStep, myGone, onMyGone, onFullDenialsDone }) {
   const assignees = [...AGENTS, ...agents.map(toAssignee)];
   const dir = Object.fromEntries(assignees.map((a) => [a.id, a]));
   const [tab, setTab] = useState("mine"); /* My Claims is the default tab */
@@ -1177,11 +1132,11 @@ function ClaimsPage({ notify, claims, agents, assign, review, editProposal, send
   const [pop, setPop] = useState(null); /* { anchor, ids, bulk } */
   const [card, setCard] = useState(null); /* { anchor, claim } */
   const [panelId, setPanelId] = useState(null);
-  const [fb, setFb] = useState({}); /* My Claims band: thumbs and Accept, per group */
-  const [cOpen, setCOpen] = useState({}); /* My Claims: which groups have their Claims table expanded (all start collapsed) */
-  const [menu, setMenu] = useState(null); /* row More actions: { anchor, claim } */
+  const [rowOpen, setRowOpen] = useState({}); /* My Claims: which claims are expanded */
+  const [myOpen, setMyOpen] = useState({}); /* My Claims: which groups are expanded */
+  const [votes, setVotes] = useState({});
 
-  useEffect(() => { setBusy(true); setSel(new Set()); setPop(null); setCard(null); setMenu(null); const t = setTimeout(() => setBusy(false), 650); return () => clearTimeout(t); }, [tab, demo]);
+  useEffect(() => { setBusy(true); setSel(new Set()); setPop(null); setCard(null); const t = setTimeout(() => setBusy(false), 650); return () => clearTimeout(t); }, [tab, demo]);
 
   /* arriving from an agent page: filter to that agent and/or open a claim */
   useEffect(() => {
@@ -1201,46 +1156,41 @@ function ClaimsPage({ notify, claims, agents, assign, review, editProposal, send
   }, [intent]);
 
   const passAssignee = (c) => !fAssignee || fAssignee.length === 0 || fAssignee.includes(c.assignee);
-  const inTab = (c) => (tab === "mine" ? c.assignee === ME && !solved.includes(c.group) : tab === "under" ? false : true) && passAssignee(c);
-  const groups = (tab === "mine" ? MY_GROUPS : GROUPS).map((g) => {
-    const gi = ALL_GROUPS.indexOf(g);
+  const inTab = (c) => (tab === "mine" ? c.assignee === ME : tab === "under" ? false : true) && passAssignee(c);
+  const groups = GROUPS.map((g) => {
     const rows = claims.filter((c) => c.group === g.key && inTab(c));
-    const sum = rows.reduce((t, r) => t + r.amount, 0);
-    if (tab === "mine") {
-      const lost = claims.filter((c) => c.group === g.key && c.mine && c.assignee !== ME).length; /* your claims you handed to someone else */
-      const base = Math.max(0, myTotalFor(g, gi) - lost), count = Math.max(base, rows.length);
-      return { ...g, rows, myTotal: count, total: rows.length > base ? sum : myAmountFor(g, base), count: String(count) };
-    }
-    return { ...g, rows, myTotal: rows.length, total: fAssignee ? sum : g.amount, count: fAssignee ? String(rows.length) : g.count };
-  }).filter((g) => g.rows.length || (tab === "mine" && !solved.includes(g.key) && Number(g.count) > 0));
-  const state = demo !== "live" ? demo : busy ? "loading" : groups.length ? "live" : "empty";
-  const rows = groups.flatMap((g) => g.rows);
+    return { ...g, rows, total: tab === "mine" || fAssignee ? rows.reduce((s, r) => s + r.amount, 0) : g.amount, count: tab === "mine" || fAssignee ? String(rows.length) : g.count };
+  }).filter((g) => g.rows.length);
+  const mineList = claims.filter((c) => c.assignee === ME && !myGone.includes(c.id) && passAssignee(c));
+  const state = demo === "clear" ? (tab === "mine" ? "clear" : "live") : demo !== "live" ? demo : busy ? "loading" : (tab === "mine" ? mineList.length : groups.length) ? "live" : "empty";
+  const rows = tab === "mine" ? mineList : groups.flatMap((g) => g.rows);
+  /* the first claim in My Claims opens by default, and the next one opens when it is solved */
+  const myGroups = [...GROUPS].sort((a, b) => (b.key === "g17") - (a.key === "g17")).map((g) => {
+    const rs = mineList.filter((c) => c.group === g.key);
+    return { ...g, rows: rs, total: rs.reduce((t, r) => t + r.amount, 0), count: String(rs.length) };
+  }).filter((g) => g.rows.length);
+  const firstG = tab === "mine" && myGroups.length ? myGroups[0] : null;
+  const firstId = firstG ? firstG.rows[0].id : null;
+  useEffect(() => { if (firstG) { setMyOpen((o) => ({ ...o, [firstG.key]: true })); setRowOpen((o) => ({ ...o, [firstId]: true })); } }, [firstId]);
+  const toggleMyGroup = (g) => setSel((p) => { const n = new Set(p); const all = g.rows.every((r) => n.has(r.id)); g.rows.forEach((r) => (all ? n.delete(r.id) : n.add(r.id))); return n; });
+  /* when the last Full Denial in My Claims is solved, the app offers to build an agent */
+  useEffect(() => {
+    const full = claims.filter((x) => x.status === "Full Denials");
+    const doneFull = full.filter((x) => myGone.includes(x.id)).length;
+    const left = full.filter((x) => x.assignee === ME && !myGone.includes(x.id)).length;
+    if (doneFull > 0 && left === 0) onFullDenialsDone(doneFull);
+  }, [myGone]);
+  /* Accept the first action: the second activates. Accept the second: the claim leaves the list. */
+  const acceptStep = (c, i, a) => {
+    if (i === 0) { onMyStep(c.id, 1); notify("Accepted: " + a.title); return; }
+    onMyStep(c.id, 2); notify("Accepted: " + a.title + ". Claim " + c.id + " is done and leaves My Claims. Nothing was sent in this prototype.");
+    setTimeout(() => { onMyGone(c.id); setSel((p) => { const n = new Set(p); n.delete(c.id); return n; }); }, 700);
+  };
 
   const toggle = (id) => setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const toggleGroup = (g) => setSel((p) => { const n = new Set(p); const all = g.rows.every((r) => n.has(r.id)); g.rows.forEach((r) => (all ? n.delete(r.id) : n.add(r.id))); return n; });
   const toggleAll = () => setSel((p) => (rows.every((r) => p.has(r.id)) ? new Set() : new Set(rows.map((r) => r.id))));
   const rect = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; };
-  const [palette, setPalette] = useState(null); /* More actions: { ids, badge, anchor, fromBar } */
-  const openPalette = (el, ids, badge, fromBar) => { setPop(null); setCard(null); setPalette({ ids, badge, anchor: rect(el), fromBar: !!fromBar }); };
-  const copyText = (text) => { try { if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => {}); } catch (e) { /* clipboard not available */ } };
-  const runCommand = (item) => {
-    const pl = palette; setPalette(null); if (!pl) return;
-    const n = pl.ids.length;
-    if (item.id === "assign") { setPop({ anchor: { ...pl.anchor, above: pl.fromBar }, ids: pl.ids, bulk: pl.fromBar }); return; }
-    if (item.id === "ids") { copyText(pl.ids.join("\n")); notify("Copied " + n + (n === 1 ? " claim ID" : " claim IDs")); return; }
-    if (item.id === "urls") { copyText(pl.ids.map((id) => "https://air.athelas.com/claims/" + id).join("\n")); notify("Copied " + n + (n === 1 ? " claim URL" : " claim URLs")); return; }
-    notify();
-  };
-  /* Command K opens More Actions for the selected claims */
-  useEffect(() => {
-    const h = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k" && sel.size > 0) {
-        const btn = document.querySelector(".bulk-more"); if (!btn) return;
-        e.preventDefault(); openPalette(btn, [...sel], sel.size + " selected", true);
-      }
-    };
-    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
-  }, [sel]);
   const openAssign = (el, ids, bulk) => { setCard(null); setPop({ anchor: { ...rect(el), above: !!bulk }, ids, bulk: !!bulk }); };
   const openAgent = (el, claim) => { setPop(null); setCard({ anchor: rect(el), claim }); };
   const pick = (agent, wasAll) => {
@@ -1250,18 +1200,6 @@ function ClaimsPage({ notify, claims, agents, assign, review, editProposal, send
     if (pop.bulk) setSel(new Set());
     setPop(null);
   };
-  const onVote = (k, v) => setFb((p) => ({ ...p, [k]: { ...p[k], vote: p[k] && p[k].vote === v ? null : v } }));
-  /* Accepting the suggested action solves every claim in the group: show "Accepted", then take the group off the worklist. The next group becomes the first one and opens. */
-  const onAccept = (g) => {
-    const n = Number(g.count), ids = claims.filter((c) => c.group === g.key).map((c) => c.id);
-    const info = acceptInfo(g, g.rows);
-    setFb((p) => ({ ...p, [g.key]: { ...p[g.key], accepted: true } }));
-    notify("Solved " + n + (n === 1 ? " claim" : " claims") + ". " + (n === 1 ? "It is" : "They are") + " removed from My Claims. Nothing was sent in this prototype.");
-    setTimeout(() => { onSolve(g.key); setSel((p) => new Set([...p].filter((x) => !ids.includes(x)))); onAccepted(info); }, 700);
-  };
-  const firstKey = tab === "mine" && groups.length ? groups[0].key : null;
-  /* The first group opens by default, and opens again when another group becomes the first. The user can still close it. */
-  useEffect(() => { if (firstKey) setOpen((o) => ({ ...o, [firstKey]: true })); }, [firstKey]);
   const panelClaim = CLAIMS_PANEL && panelId ? claims.find((c) => c.id === panelId) : null;
 
   return (
@@ -1280,14 +1218,17 @@ function ClaimsPage({ notify, claims, agents, assign, review, editProposal, send
         </div>
       </div>
       {filtersOpen && <FilterRow assignees={assignees} value={fAssignee} onChange={setFAssignee} onHide={() => setFiltersOpen(false)} />}
-      <ClaimsTable state={state} groups={state === "live" ? groups : []} sel={sel} open={open} tab={tab} dir={dir}
-        onOpen={(k) => setOpen((o) => ({ ...o, [k]: !o[k] }))} onToggle={toggle} onToggleGroup={toggleGroup} onToggleAll={toggleAll}
-        onAssignClick={(el, ids) => openAssign(el, ids, false)} onAgentClick={openAgent} onOpenClaim={setPanelId} canOpen={CLAIMS_PANEL} solvedAny={solved.length > 0} onMoreClick={(el, ids) => openPalette(el, ids, ids.length + (ids.length === 1 ? " claim" : " claims"), false)}
-        fb={fb} onVote={onVote} onAccept={onAccept} onLoadMore={onLoadMore} notify={notify}
-        cOpen={cOpen} onToggleClaims={(k) => setCOpen((o) => ({ ...o, [k]: !o[k] }))} />
-      {sel.size > 0 && state === "live" && <BulkBar n={sel.size} onAssign={(el) => openAssign(el, [...sel], true)} onAsk={notify} onMore={(el) => openPalette(el, [...sel], sel.size + " selected", true)} onClear={() => { setSel(new Set()); setPop(null); }} />}
-      {palette && <CommandPalette badge={palette.badge} n={palette.ids.length} onRun={runCommand} onClose={() => setPalette(null)}
-        single={new Set(palette.ids.map((id) => (claims.find((c) => c.id === id) || {}).patient)).size === 1} />}
+      {tab === "mine" ? (
+        <MyClaimsTable state={state} groups={state === "live" ? myGroups : []} sel={sel} onToggle={toggle} onToggleGroup={toggleMyGroup} onToggleAll={toggleAll} dir={dir}
+          gOpen={myOpen} onToggleGroupOpen={(k) => setMyOpen((o) => ({ ...o, [k]: !o[k] }))} open={rowOpen} onToggleOpen={(id) => setRowOpen((o) => ({ ...o, [id]: !o[id] }))} step={myStep} onAccept={acceptStep}
+          votes={votes} onVote={(k, v) => setVotes((p) => ({ ...p, [k]: p[k] === v ? null : v }))}
+          onAssignClick={(el, ids) => openAssign(el, ids, false)} notify={notify} allDone={myGone.length > 0} claims={claims} goneIds={myGone} onWorkable={() => setTab("workable")} />
+      ) : (
+        <ClaimsTable state={state} groups={state === "live" ? groups : []} sel={sel} open={open} tab={tab} dir={dir}
+          onOpen={(k) => setOpen((o) => ({ ...o, [k]: !o[k] }))} onToggle={toggle} onToggleGroup={toggleGroup} onToggleAll={toggleAll}
+          onAssignClick={(el, ids) => openAssign(el, ids, false)} onAgentClick={openAgent} onOpenClaim={setPanelId} canOpen={CLAIMS_PANEL} />
+      )}
+      {sel.size > 0 && state === "live" && <BulkBar n={sel.size} onAssign={(el) => openAssign(el, [...sel], true)} onAsk={notify} onClear={() => { setSel(new Set()); setPop(null); }} />}
       {pop && <AssignPopover anchor={pop.anchor} ids={pop.ids} claims={claims} list={assignees} onPick={pick} onClose={() => setPop(null)} />}
       {card && <AgentCard anchor={card.anchor} agent={dir[card.claim.assignee]} claim={card.claim} onClose={() => setCard(null)}
         onOpen={() => { setCard(null); goAgent(card.claim.assignee); }}
@@ -1450,9 +1391,12 @@ function AgentPage({ agent, claims, activity, dir, onUpdate, onRule, onApprove, 
   );
 }
 
-function HubPage({ agents, claims, activity, onOpen, onNew, onPause, onDelete }) {
+function HubPage({ agents, claims, activity, onOpen, onNew, onPause, onDelete, detail }) {
   const [tab, setTab] = useState("all");
   const [del, setDel] = useState(null);
+  const [selId, setSelId] = useState(null); /* the card you tapped: its agent page shows below */
+  const selected = agents.find((a) => a.id === selId) || null;
+  const pickCard = (id) => setSelId((cur) => (cur === id ? null : id));
   const rows = agents.map((a) => ({ a, st: agentStatus(a, claims), s: agentStats(a, claims) }));
   const count = (k) => (k === "all" ? rows.length : rows.filter((r) => r.st.toLowerCase() === k).length);
   const ids = new Set(agents.map((a) => a.id));
@@ -1481,7 +1425,8 @@ function HubPage({ agents, claims, activity, onOpen, onNew, onPause, onDelete })
       </div>
       <div className="hub-grid">
         {shown.map(({ a, st, s: n }) => (
-          <article key={a.id} className="hc" aria-label={a.name}>
+          <article key={a.id} className={"hc" + (selId === a.id ? " sel" : "")} aria-label={a.name} aria-current={selId === a.id ? "true" : undefined} tabIndex={0}
+            onClick={() => pickCard(a.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); pickCard(a.id); } }}>
             <div className="hc-h">
               <span className="hc-ic"><AgentEmblem size={24} /></span>
               <div className="hc-t"><b>{a.name}</b><span>{a.rule ? a.rule.payer + " claims" : "No rule yet"} &middot; {a.paused ? "Auto-assign paused" : a.rule && a.rule.on ? "Auto-assign on" : "Auto-assign off"}</span></div>
@@ -1492,10 +1437,10 @@ function HubPage({ agents, claims, activity, onOpen, onNew, onPause, onDelete })
               <div className="hc-r"><span>Ready for review</span><b className="acc">{n.ready}</b></div>
               <div className="hc-r"><span>Approved</span><b>{n.approved}</b></div>
               <div className="hc-f">
-                <button className="btn" onClick={() => onPause(a)}>{a.paused ? <Play size={16} /> : <Pause size={16} />}{a.paused ? "Resume" : "Pause"}</button>
-                <button className="btn" onClick={() => onOpen(a)}>Open</button>
+                <button className="btn" onClick={(e) => { e.stopPropagation(); onPause(a); }}>{a.paused ? <Play size={16} /> : <Pause size={16} />}{a.paused ? "Resume" : "Pause"}</button>
+                <button className="btn" onClick={(e) => { e.stopPropagation(); onOpen(a); }}>Open</button>
                 <span className="grow" />
-                <button className="ibtn" aria-label={"Delete " + a.name} onClick={() => setDel(a)}><Trash2 size={18} /></button>
+                <button className="ibtn" aria-label={"Delete " + a.name} onClick={(e) => { e.stopPropagation(); setDel(a); }}><Trash2 size={18} /></button>
               </div>
             </div>
           </article>
@@ -1504,6 +1449,8 @@ function HubPage({ agents, claims, activity, onOpen, onNew, onPause, onDelete })
           <button className="hc hc-new" onClick={onNew}><span className="hub-ic"><FigIcon name="add" size={18} /></span><b>Create new agent</b></button>
         )}
       </div>
+      {!selected && agents.length > 0 && <p className="hub-hint">Select an agent to see its tasks, activity and settings here.</p>}
+      {selected && <section className="hub-detail" aria-label={selected.name + " details"}>{detail(selected)}</section>}
       {del && (
         <Dialog title={"Delete " + del.name + "?"} confirmLabel="Delete agent" onConfirm={() => { onDelete(del); setDel(null); }} onCancel={() => setDel(null)}>
           <p>{agentStats(del, claims).worked} claims it worked go back to unassigned. This cannot be undone.</p>
@@ -1530,46 +1477,65 @@ function DraftCard({ icon: I, title, desc, children }) {
   );
 }
 
-/* ---------- After Accept: offer to build an agent for that action ---------- */
-const segText = (arr) => arr.map((x) => (typeof x === "string" ? x : x.link || x.bold || "")).join("");
-function acceptInfo(g, rows) {
-  const b = bandFor(g, rows);
-  const chips = GROUP_BY_KEY[g.key].chips.flat();
-  return {
-    title: b.title, status: g.status, count: Number(g.count) || 1,
-    payer: g.payer ? tcase(g.payer) : "", payerGroup: g.payer ? payerGroup(g.payer) : null,
-    reason: chips.slice(g.payer ? 1 : 0).filter((x) => !isCode(x)).join(" / "),
-    suggestion: segText(b.suggestion), next: segText(b.next),
-  };
-}
-/* A ready draft for the agent builder, made from the action the user just accepted */
-function seedFromAction(info, taken) {
-  const noun = info.count === 1 ? "claim" : "claims";
-  const base = info.title.replace(/ from .*/, "") + " Agent";
-  let name = base, k = 2;
-  while (taken.includes(name)) name = base + " " + k++;
-  const from = info.payer ? " from " + info.payer : "";
-  const shortReason = info.reason.length > 60 ? info.reason.slice(0, 57) + "..." : info.reason;
-  const scope = [info.payer, shortReason].filter(Boolean).join(", ");
-  /* instructions describe the work in general, not today's counts */
-  const general = info.suggestion.replace(/ The same change applies to all \d+ claims in this group\./, "").replace(/^We reviewed all \d+ claims after they were rejected for coverage-related reasons\. /, "").replace(/\ball \d+ claims\b/g, "the claims").replace(/\bthis claim\b/g, "the claim");
-  const docs = info.status === "Payment Posting" ? ["Contract and fee schedule", "Remittance posting SOP"] : info.status === "Rejections" ? ["Payer policies", "Insurance detection guide"] : ["Payer policies", "Appeals guide"];
-  const rule = info.payerGroup ? { payer: info.payerGroup, on: false } : null;
-  const lines = [BASE_LINE, "Work claims in " + info.status + (scope ? " (" + scope + ")" : "") + ".", "Do this: " + general, "Prepare claims with the same cause together, oldest first.", UNSURE_LINE];
+/* ---------- After the last Full Denial is solved: offer to build an agent for that work ---------- */
+function seedFromFullDenials(count, taken) {
+  let name = "Full Denials Agent", k = 2;
+  while (taken.includes(name)) name = "Full Denials Agent " + k++;
+  const lines = [
+    BASE_LINE,
+    "Work claims in Full Denials with CO-16 and remark M76 (diagnosis missing, incomplete or invalid).",
+    "Review the diagnosis codes against the chart. Remove symptom, history or conflicting codes (Excludes1), correct the 7th character, and point every line to the confirmed diagnosis.",
+    "Then prepare the resubmission to the payer. Do not send it until it is approved.",
+    "Prepare claims with the same cause together, oldest first.",
+    UNSURE_LINE,
+  ];
   return {
     id: Date.now(),
-    text: "Build an agent that does \"" + info.title + "\" on " + info.status + " claims" + from + ".",
-    reply: "Here is a draft built from the action you just accepted. You used \"" + info.title + "\" on " + info.count + " " + noun + from + ". I added the instructions and suggested context" + (rule ? ", and an auto-assign rule for " + rule.payer + " claims that stays off until you turn it on." : ".") + " Change anything on the right, then create the agent.",
-    draft: { name, description: info.title + " for " + info.status + " claims" + from + ".", instructions: lines.join("\n"), context: docs, rule, fromAction: info.title },
+    text: "Build an agent that does what I just did on the Full Denials: fix the diagnoses, then resubmit.",
+    reply: "Here is a draft built from the Full Denials you just solved. You fixed the diagnoses on " + count + (count === 1 ? " claim" : " claims") + " and prepared each resubmission. I added the instructions, suggested context and an auto-assign rule for Commercial claims that stays off until you turn it on. Change anything on the right, then create the agent.",
+    draft: { name, description: "Fixes the diagnoses on Full Denials (CO-16 / M76) and prepares the resubmission.", instructions: lines.join("\n"), context: ["Payer policies", "Appeals guide", "ICD-10 coding guidelines"], rule: { payer: "Commercial", on: false } },
   };
 }
-function AgentOffer({ info, onBuild, onLater }) {
+function AgentOffer({ offer, progress, onBuild, onLater, onView }) {
+  if (offer.stage === "done") {
+    const { total, ready } = progress, all = total > 0 && ready >= total;
+    return (
+      <section className="offer" role="region" aria-label="Agent set up" aria-live="polite">
+        <span className="offer-i"><AgentEmblem size={22} animate={!all} /></span>
+        <div className="offer-t">
+          <div className="offer-c">
+            <h3>{offer.name} is set up and working</h3>
+            <p>{total > 0 ? "It started on " + total + " Full Denials that nobody owns yet. " : "It is watching for new Full Denials. "}Every result comes to you for review, and nothing is sent without your approval.</p>
+          </div>
+          <ul className="offer-ck">
+            <li><Check size={14} />Instructions saved</li>
+            <li><Check size={14} />{offer.docs} context documents added</li>
+            {total > 0 && <li><Check size={14} />Started on {total} Full Denials</li>}
+          </ul>
+          {total > 0 && (
+            <>
+              <div className="offer-pg" role="progressbar" aria-label="Results ready for review" aria-valuemin={0} aria-valuemax={total} aria-valuenow={ready}><i style={{ width: (ready / total) * 100 + "%" }} /></div>
+              <div className="offer-st">{all ? "All " + total + " results are ready for review" : ready + " of " + total + " ready for review"}</div>
+            </>
+          )}
+          <div className="offer-b"><button className="offer-go" onClick={onLater}>Done</button><button className="offer-no" onClick={onView}>View agent</button></div>
+        </div>
+        <button className="ibtn offer-x" aria-label="Dismiss" onClick={onLater}><X size={16} /></button>
+      </section>
+    );
+  }
+  const { count } = offer;
   return (
-    <section className="offer" role="region" aria-label="Build an agent">
+    <section className="offer" role="region" aria-label="Build an agent for Full Denials">
+      <span className="offer-i"><AgentEmblem size={22} /></span>
+      <div className="offer-t">
+        <div className="offer-c">
+          <h3>Build an agent for Full Denials?</h3>
+          <p>You solved all {count} Full Denials in My Claims. An agent can do the first pass next time: fix the diagnoses, prepare the resubmission, and send each result to you for review.</p>
+        </div>
+        <div className="offer-b"><button className="offer-go" onClick={onBuild}>Build Agent</button><button className="offer-no" onClick={onLater}>Not Now</button></div>
+      </div>
       <button className="ibtn offer-x" aria-label="Dismiss" onClick={onLater}><X size={16} /></button>
-      <div className="offer-h"><span className="offer-i"><AgentEmblem size={26} /></span><h3>Build an agent for this?</h3></div>
-      <p>You solved {info.count} {info.count === 1 ? "claim" : "claims"} with &ldquo;{info.title}&rdquo;. An agent can prepare this for you next time and send each result to you for review.</p>
-      <div className="offer-b"><button className="btn primary" onClick={onBuild}>Build agent</button><button className="btn" onClick={onLater}>Not now</button></div>
     </section>
   );
 }
@@ -1661,7 +1627,7 @@ function AgentBuilder({ agents, onCreate, onCancel, seed }) {
 
 
 export default function App() {
-  const [page, setPage] = useState("claims"); /* first screen: Claims, My Claims tab */
+  const [page, setPage] = useState("claims"); /* the prototype starts in My Claims */
   const [navOff, setNavOff] = useState(false);
   const [msg, setMsg] = useState("");
   const [agents, setAgents] = useState(SEED_AGENTS);
@@ -1669,10 +1635,24 @@ export default function App() {
   const [claims, setClaims] = useState(seed.claims);
   const [activity, setActivity] = useState(seed.activity);
   const [intent, setIntent] = useState(null);
-  const [solved, setSolved] = useState([]); /* My Claims groups the user has solved */
-  const [offer, setOffer] = useState(null); /* the "build an agent for this?" prompt */
-  const [asked, setAsked] = useState([]); /* actions we already asked about, so we ask once */
+  const [myStep, setMyStep] = useState({}); /* My Claims: 0 = first action active, 1 = second active, 2 = done */
+  const [myGone, setMyGone] = useState([]); /* My Claims: claims that are done and gone */
+  const [offer, setOffer] = useState(null); /* the "build an agent" prompt */
+  const [asked, setAsked] = useState(false); /* we ask once */
   const [builderSeed, setBuilderSeed] = useState(null);
+  const onFullDenialsDone = (count) => { if (asked) return; setAsked(true); setOffer({ count }); };
+  const buildFromOffer = () => {
+    const o = offer, d = seedFromFullDenials(o.count, agents.map((a) => a.name)).draft;
+    const a = { id: "ag" + Date.now(), name: d.name, init: initials(d.name), description: d.description, instructions: d.instructions, context: d.context, rule: { ...d.rule, on: false }, paused: false };
+    const ids = claims.filter((c) => c.status === "Full Denials" && !c.assignee).map((c) => c.id); /* only Full Denials nobody owns yet */
+    setAgents((p) => [...p, a]);
+    if (ids.length) { const r = doAssign(claims, ids, a.id, { auto: true, agentIds: [...agentIds, a.id], now: Date.now(), reason: "Assigned when the agent was set up" }); setClaims(r.claims); setActivity((x) => [...r.events, ...x]); }
+    setOffer({ ...o, stage: "done", agentId: a.id, name: a.name, docs: a.context.length }); /* the biller stays in the work list */
+  };
+  const offerTasks = offer && offer.agentId ? claims.filter((c) => c.assignee === offer.agentId && c.work) : [];
+  const offerProgress = { total: offerTasks.length, ready: offerTasks.filter((c) => c.work.state === "ready").length };
+  const laterOffer = () => setOffer(null);
+  useEffect(() => { if (page !== "agent:new") setBuilderSeed(null); }, [page]);
   const claimsRef = useRef(claims);
   claimsRef.current = claims;
   const pausedRef = useRef(new Set());
@@ -1700,16 +1680,11 @@ export default function App() {
   const setRule = (agent, rule) => {
     update(agent.id, { rule });
     if (rule.on) {
-      const ids = claims.filter((c) => !c.mine && payerGroup(c.payer) === rule.payer && c.assignee !== agent.id).map((c) => c.id);
+      const ids = claims.filter((c) => payerGroup(c.payer) === rule.payer && c.assignee !== agent.id).map((c) => c.id);
       if (ids.length) assign(ids, agent.id, true, `Assigned by the ${rule.payer} rule`);
       notify(ids.length ? `Assigned ${ids.length} ${rule.payer} ${ids.length === 1 ? "claim" : "claims"} to ${agent.name}` : `Auto-assign is on for ${rule.payer} claims`);
     } else notify("Auto-assign is off. Claims already assigned stay with " + agent.name);
   };
-  const loadMore = (g, n) => setClaims((p) => {
-    const gi = ALL_GROUPS.findIndex((x) => x.key === g.key);
-    const start = p.filter((c) => c.group === g.key).reduce((m, c) => Math.max(m, c.idx == null ? -1 : c.idx), -1) + 1;
-    return [...p, ...Array.from({ length: n }, (_, i) => makeClaimFor(ALL_GROUPS[gi], gi, start + i, true))];
-  });
   const review = (ids, decision) => {
     const now = Date.now(); const evs = [];
     const next = claims.map((c) => {
@@ -1732,12 +1707,8 @@ export default function App() {
     add({ from: "you", text, t: Date.now() });
     setTimeout(() => add({ from: "agent", text: "Got it. I will use that on my next pass and update the proposal.", t: Date.now() }), 900);
   };
-  const onAccepted = (info) => { if (asked.includes(info.title) || agents.some((a) => a.fromAction === info.title)) return; setOffer(info); };
-  const buildFromOffer = () => { const info = offer; setAsked((p) => [...p, info.title]); setBuilderSeed(seedFromAction(info, agents.map((a) => a.name))); setOffer(null); setPage("agent:new"); };
-  const laterOffer = () => { setAsked((p) => [...p, offer.title]); setOffer(null); };
-  useEffect(() => { if (page !== "agent:new") setBuilderSeed(null); }, [page]);
   const create = (d) => {
-    const a = { id: "ag" + Date.now(), fromAction: d.fromAction, name: d.name.trim(), init: initials(d.name), description: d.description, instructions: d.instructions, context: d.context, rule: d.rule ? { ...d.rule, on: false } : null, paused: false };
+    const a = { id: "ag" + Date.now(), name: d.name.trim(), init: initials(d.name), description: d.description, instructions: d.instructions, context: d.context, rule: d.rule ? { ...d.rule, on: false } : null, paused: false };
     setAgents((p) => [...p, a]); setPage("agent:" + a.id);
     if (d.rule && d.rule.on) { setTimeout(() => setRule(a, { ...d.rule, on: true }), 0); }
     else notify(`Created ${a.name}`);
@@ -1766,15 +1737,15 @@ export default function App() {
         <div className="rightcol">
           <TopBar navOff={navOff} onToggleNav={() => setNavOff(!navOff)} crumb={crumb} notify={notify} />
           <main className="canvas">
-            {page === "claims" && <ClaimsPage notify={notify} claims={claims} agents={agents} assign={assign} review={review} editProposal={editProposal} sendChat={sendChat} intent={intent} clearIntent={() => setIntent(null)} goAgent={(id) => setPage("agent:" + id)} onLoadMore={loadMore} solved={solved} onSolve={(k) => setSolved((p) => (p.includes(k) ? p : [...p, k]))} onAccepted={onAccepted} />}
+            {page === "claims" && <ClaimsPage notify={notify} claims={claims} agents={agents} assign={assign} review={review} editProposal={editProposal} sendChat={sendChat} myStep={myStep} onMyStep={(id, n) => setMyStep((p) => ({ ...p, [id]: n }))} myGone={myGone} onFullDenialsDone={onFullDenialsDone} onMyGone={(id) => setMyGone((p) => (p.includes(id) ? p : [...p, id]))} intent={intent} clearIntent={() => setIntent(null)} goAgent={(id) => setPage("agent:" + id)} />}
             {agent && <AgentPage key={agent.id} agent={agent} claims={claims} activity={activity} onUpdate={(patch) => update(agent.id, patch)} onRule={(r) => setRule(agent, r)} onApprove={(ids) => review(ids, "approved")} onReview={review} onEdit={editProposal} onChat={sendChat} dir={dir} goClaims={goClaims} notify={notify} />}
-            {page === "agents" && <HubPage agents={agents} claims={claims} activity={activity} onOpen={(a) => setPage("agent:" + a.id)} onNew={() => setPage("agent:new")} onPause={togglePause} onDelete={removeAgent} />}
+            {page === "agents" && <HubPage detail={(a) => <AgentPage key={a.id} agent={a} claims={claims} activity={activity} onUpdate={(patch) => update(a.id, patch)} onRule={(r) => setRule(a, r)} onApprove={(ids) => review(ids, "approved")} onReview={review} onEdit={editProposal} onChat={sendChat} dir={dir} goClaims={goClaims} notify={notify} />} agents={agents} claims={claims} activity={activity} onOpen={(a) => setPage("agent:" + a.id)} onNew={() => setPage("agent:new")} onPause={togglePause} onDelete={removeAgent} />}
             {page === "agent:new" && <AgentBuilder key={builderSeed ? builderSeed.id : "blank"} seed={builderSeed} agents={agents} onCreate={create} onCancel={() => setPage("agents")} />}
           </main>
         </div>
       </div>
-      {offer && <AgentOffer info={offer} onBuild={buildFromOffer} onLater={laterOffer} />}
-      {msg && <div className="toast" role="status">{msg}</div>}
+      {offer && <AgentOffer offer={offer} progress={offerProgress} onBuild={buildFromOffer} onLater={laterOffer} onView={() => { const id = offer.agentId; setOffer(null); setPage("agent:" + id); }} />}
+      {msg && !offer && <div className="toast" role="status">{msg}</div>}
     </div>
   );
 }
@@ -1792,7 +1763,7 @@ const CSS = `
 --r-soft:8px;--r-semi:4px;--r-extra:12px;--r-card:16px;--r-full:100px;
 /* Tokens added for this screen (sampled from the recording) */
 --imp-bg:rgba(17,50,238,.2);--avatar-bg:#6068fd;--dot-peach:#ebddd3;--dot-blue:#b9c1f3;
---shadow-sticky:rgba(0,0,0,.12);--danger:#b52b2b;--danger-sub:rgba(181,43,43,.1);--info:#416bcf;--info-sub:rgba(65,107,207,.1);--info-bd:rgba(65,107,207,.4);--neutral-sub:rgba(89,89,89,.1);--success:#2a9953;--em-orange:#c27023;--em-blue:#405bf2;--em-green:#2a9953;--em-purple:#ae42b0;--ai-from:#f9fafe;--ai-to:#edf0ff;--scrim:rgba(0,0,0,.45);--orange:#c27023;--orange-sub:rgba(194,112,35,.1);--pop-shadow:rgba(0,0,0,.18);--scrim:rgba(0,0,0,.35);
+--shadow-sticky:rgba(0,0,0,.12);--danger:#b52b2b;--danger-sub:rgba(181,43,43,.1);--info:#416bcf;--info-sub:rgba(65,107,207,.1);--info-bd:rgba(65,107,207,.4);--neutral-sub:rgba(89,89,89,.1);--success:#2a9953;--em-orange:#c27023;--em-blue:#405bf2;--em-green:#2a9953;--em-purple:#ae42b0;--orange:#c27023;--orange-sub:rgba(194,112,35,.1);--pop-shadow:rgba(0,0,0,.18);--scrim:rgba(0,0,0,.35);--success-fg:#228048;--ai-from:#f9fafe;--ai-to:#edf0ff;
 --av-green:#5fb86b;--av-teal:#58c7b8;--av-orange:#f5a03a;--av-red:#e85d5f;--av-cyan:#55c7d6;--av-pink:#d16fd4;--av-purple:#7268d2;--av-blue:#5b8fe8;--av-lilac:#a99ad8;--av-indigo:#7f8bd0;--av-lime:#8fcb6a;--av-mint:#8fddd0;--toast-bg:#141414;--toast-fg:#e5e5e5;--skel:rgba(0,0,0,.07);
 font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--fg1);font-size:13px;line-height:1.6;height:100vh;display:flex;flex-direction:column;background:var(--tonal);font-variant-numeric:tabular-nums;position:relative}
 .app *{box-sizing:border-box}
@@ -1869,57 +1840,10 @@ font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--fg
 .cltbl td.sel .cb,.cltbl th.sel .cb{margin:0 auto}
 .cltbl td.exp,.cltbl td.sel{border-right:1px solid transparent}
 .cltbl td.stripe{box-shadow:inset 6px 0 0 var(--d10)}
-.cltbl .asg-h,.cltbl .asg-c{position:sticky;right:0;z-index:2;width:108px;min-width:108px;padding:0 8px;box-shadow:-6px 0 8px -6px var(--shadow-sticky);text-align:center}
+.cltbl .asg-h,.cltbl .asg-c{position:sticky;right:0;z-index:2;width:92px;min-width:92px;padding:0 8px;box-shadow:-6px 0 8px -6px var(--shadow-sticky);text-align:center}
 .cltbl th.asg-h{z-index:4;border-right:0}
 .cltbl td.asg-c .bar{margin:0 auto}
 .clgrp td{height:45px;padding:0;background-color:var(--base)}
-.asgwrap{display:inline-flex;align-items:center;gap:2px}
-.ibtn.more{color:var(--fg2)}.ibtn.more:disabled{opacity:.4}
-.asgwrap.hdr{gap:8px}
-.clgrp.nosel .clgin{max-width:calc(100vw - 600px)}
-.btn.more{padding:0 10px 0 12px;white-space:nowrap}.btn.more:hover:not(:disabled){background:var(--d5)}.btn.more:disabled{opacity:.4;cursor:default}
-.rmenu{position:fixed;z-index:60;min-width:196px;padding:4px;background:var(--base);border:1px solid var(--bs);border-radius:var(--r-soft);box-shadow:0 8px 24px var(--pop-shadow)}
-.rmenu button{display:flex;align-items:center;gap:8px;width:100%;height:32px;padding:0 10px;border:0;border-radius:var(--r-semi);background:transparent;color:var(--fg1);text-align:left}
-.rmenu button:hover{background:var(--d5)}.rmenu svg{color:var(--fg2)}
-
-/* More actions: command palette */
-.tipwrap{position:relative;display:inline-flex}
-.tip{position:absolute;bottom:calc(100% + 14px);left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:8px 10px 8px 14px;background:var(--toast-bg);color:var(--toast-fg);border-radius:var(--r-soft);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .12s;z-index:14}
-.tip kbd{min-width:22px;height:22px;padding:0 5px;display:inline-grid;place-items:center;background:var(--base);color:var(--fg1);border-radius:var(--r-semi);font:inherit;font-size:12px}
-.tipwrap:hover .tip,.tipwrap:focus-within .tip{opacity:1}
-.pal-scrim{position:fixed;inset:0;z-index:80;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:24px}
-.pal{width:min(600px,100%);max-height:min(520px,calc(100vh - 48px));display:flex;flex-direction:column;background:var(--base);border-radius:var(--r-extra);box-shadow:0 16px 48px var(--pop-shadow);overflow:hidden}
-.pal-h{display:flex;align-items:center;gap:12px;padding:0 16px;height:56px;flex:none;border-bottom:1px solid var(--bs);color:var(--fg2)}
-.pal-h input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;font-size:16px;color:var(--fg1)}.pal-h input::placeholder{color:var(--fg3)}
-.pal-h input:focus-visible{outline:none}
-.pal-badge{padding:4px 10px;border-radius:var(--r-soft);background:var(--d5);color:var(--fg1);white-space:nowrap}
-.pal-l{flex:1;min-height:0;overflow:auto;padding:4px 16px 12px 16px}
-.pal-l::-webkit-scrollbar{width:8px}.pal-l::-webkit-scrollbar-thumb{background:var(--bst);border-radius:4px}
-.pal-sec{padding:14px 12px 4px;color:var(--fg3);font-size:14px}
-.pal-i{display:flex;align-items:center;gap:12px;width:100%;min-height:42px;padding:8px 12px;border:0;border-radius:var(--r-soft);background:transparent;color:var(--fg1);text-align:left;font-size:15px}
-.pal-i.on{background:var(--d5)}
-.pal-i svg{flex:none;color:var(--fg2)}
-.pal-t{flex:1;min-width:0;display:flex;flex-direction:column}
-.pal-r{margin-top:2px;color:var(--fg3);font-size:13px;line-height:1.4}
-.pal-i.dis{cursor:not-allowed}.pal-i.dis .pal-n,.pal-i.dis svg{color:var(--fg3)}
-.pal-hint{display:inline-flex;align-items:center;gap:4px;color:var(--fg2);font-size:13px;white-space:nowrap}
-.pal-key{min-width:24px;height:24px;padding:0 6px;display:inline-grid;place-items:center;border:1px solid var(--bst);border-radius:var(--r-semi);background:var(--base);color:var(--fg1);font:inherit;font-size:12px}
-.pal-none{padding:32px 12px;color:var(--fg3);text-align:center}
-
-
-/* build-an-agent offer, shown after Accept */
-.offer{position:fixed;right:24px;bottom:72px;z-index:70;width:360px;padding:16px;background:var(--base);border:1px solid var(--bs);border-radius:var(--r-card);box-shadow:0 12px 32px var(--pop-shadow);animation:offer-in .22s ease-out}
-.offer h3{margin:0;font-size:14px;font-weight:500}
-.offer p{margin:10px 0 14px;color:var(--fg2);line-height:1.5}
-.offer-h{display:flex;align-items:center;gap:10px;padding-right:28px}
-.offer-i{width:36px;height:36px;border-radius:var(--r-soft);border:1px solid var(--bs);display:grid;place-items:center;flex:none}
-.offer-x{position:absolute;top:10px;right:10px}
-.offer-b{display:flex;gap:8px}
-@keyframes offer-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){.offer{animation:none}}
-
-.ibtn:disabled{cursor:default;opacity:1}.ibtn:disabled:hover{background:transparent}
-.clgrp.nosel .clgin{left:36px;padding-left:4px}
 .clgrp td.asg-c{padding:0 8px}.clgrp td.exp .ibtn{margin:0 auto}
 .clgin{position:sticky;left:76px;display:flex;align-items:center;gap:8px;height:45px;padding:0;width:max-content;max-width:calc(100vw - 460px)}
 .clgin .ibtn svg{transition:transform .12s}.clgin .ibtn svg.rot{transform:rotate(-90deg)}
@@ -1939,7 +1863,8 @@ font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--fg
 .tag.filled{height:28px;padding:0 8px;background:var(--bg);color:var(--fg1)}
 .chip{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border-radius:var(--r-soft);background:var(--d5);color:var(--fg1);font-weight:500;white-space:nowrap;max-width:620px;min-width:0}
 .chip:not(.amt){overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:28px}
-.chip.amt{background:var(--neutral-sub);flex:none}.tag.filled,.chipset{flex:none}
+.chip.amt{background:var(--neutral-sub);flex:none}
+.tag.filled,.chipset{flex:none}
 .chipset{display:inline-flex}.chipset .chip+.chip{margin-left:-6px;box-shadow:0 0 0 2px var(--base)}
 .plink{border:0;background:transparent;padding:0;color:var(--fg-accent);font-size:13px;cursor:pointer}.plink:hover{text-decoration:underline;text-underline-offset:2px}
 .ins{display:inline-flex;align-items:center;gap:6px;line-height:16px;color:var(--fg2)}.ins svg{color:var(--success)}
@@ -1955,6 +1880,78 @@ font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--fg
 .ag-id{display:flex;align-items:center;gap:16px}
 .ag-emblem{width:56px;height:56px;border-radius:var(--r-extra);display:grid;place-items:center;background:var(--base);border:1px solid var(--bst)}
 .stack{display:inline-flex;align-items:center}.stack .av+.av{margin-left:-20px}
+
+/* My Claims: expandable claims, summary and a two-step suggested action path (Figma Claims, 10881:131379) */
+.clwrap{container-type:inline-size}
+.mytbl .exp .ibtn svg{transition:transform .12s}.mytbl .exp .ibtn svg.rot{transform:rotate(-90deg)}
+.myctx td{padding:0;height:auto;background-color:var(--base);border-bottom:1px solid var(--bs);white-space:normal}
+.mypanel{position:sticky;left:0;width:calc(100cqw - 2px);box-sizing:border-box;display:flex;gap:32px;padding:16px 20px 20px;background:linear-gradient(180deg,var(--ai-from),var(--ai-to));box-shadow:inset 6px 0 0 #e5e5e5} /* the 6px stripe of the claim row continues down the expanded panel */
+.mp-l{flex:1 1 0;min-width:0}.mp-r{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
+.mp-l h3{margin:0;font-size:13px;font-weight:500;color:var(--fg1);line-height:21px}
+.mp-l p{margin:0 0 8px;color:var(--fg2);line-height:21px;text-wrap:pretty}.mp-l p:last-child{margin-bottom:0}
+.xlink{color:var(--fg-accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px}.xlink svg{display:inline-block;margin-left:2px;vertical-align:-1px}.nw{white-space:nowrap}
+.b-strong{font-weight:500;color:var(--fg1)}
+.st{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;padding-bottom:14px}
+.st:last-child{padding-bottom:0}
+.st:not(:last-child)::before{content:"";position:absolute;left:13.5px;top:26px;bottom:2px;width:1px;background:var(--bst)}
+.st-emb{display:grid;place-items:start center;padding-top:1px}
+.st-t{font-weight:500;color:var(--fg1);line-height:21px;margin-bottom:8px}
+.st-card{background:var(--base);border:1px solid var(--bs);border-radius:var(--r-soft);padding:12px 16px}
+.st-card p{margin:0;color:var(--fg1);line-height:21px}
+.st-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}
+.st-chg{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;font-size:12px;color:var(--fg1)}
+.st-chip{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;border-radius:var(--r-soft);background:var(--d5);color:var(--fg1);font-size:12px;border:0;line-height:18px}.st-chip s{color:var(--fg2);margin:0 4px}
+button.st-more{cursor:pointer}button.st-more:hover{background:var(--d10)}
+.st-acts{display:flex;align-items:center;gap:4px;flex:none}
+.vbtn{width:28px;height:28px;border:0;border-radius:var(--r-soft);background:transparent;color:var(--fg2);display:grid;place-items:center;padding:0}.vbtn:hover{background:var(--d5)}.vbtn.on{background:var(--accent-sub);color:var(--fg-accent)}.vbtn.note{color:var(--fg-accent)}
+.st-sep{width:1px;height:20px;background:var(--bs);margin:0 6px}
+.st-card.slim{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:8px 12px 8px 16px}
+.st-slim{display:inline-flex;align-items:center;gap:6px;color:var(--fg1)}
+.st-card.slim.done .st-slim svg{color:var(--success)}.st-ok{color:var(--success);font-weight:500}
+.btn.off{background:var(--d10);border-color:transparent;color:var(--fg-dis);cursor:default}
+.st-waiting .st-emb svg{opacity:.55}
+@media (max-width:1100px){.mypanel{flex-direction:column}}
+
+
+/* Inline Alert Notification, Intent=Success (Figma Claims, 10881:131379) */
+.offer{position:fixed;right:30px;bottom:32px;z-index:70;width:400px;box-sizing:border-box;display:flex;align-items:flex-start;gap:12px;padding:6px 12px;background:linear-gradient(rgba(42,153,83,.1),rgba(42,153,83,.1)),#fff;border-left:4px solid var(--success);border-radius:4px;box-shadow:0 6px 16px rgba(0,0,0,.08);color:#1f1f1f;animation:offer-in .22s ease-out}
+.offer-i{flex:none;margin-top:9px;display:grid;place-items:center}
+.offer-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:8px;padding-right:12px}
+.offer-c{display:flex;flex-direction:column;gap:4px;padding:6px 0}
+.offer h3{margin:0;font-size:15px;font-weight:500;line-height:24px;color:#1f1f1f}
+.offer p{margin:0;font-size:13px;line-height:21px;color:#1f1f1f}
+.offer-ck{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:13px;line-height:21px;color:#1f1f1f}
+.offer-ck li{display:flex;align-items:center;gap:8px}.offer-ck svg{color:var(--success);flex:none}
+.offer-pg{height:4px;border-radius:2px;background:rgba(42,153,83,.2);overflow:hidden}
+.offer-pg i{display:block;height:100%;background:var(--success);border-radius:2px;transition:width .5s ease}
+.offer-st{margin-top:-4px;font-size:12px;line-height:18px;color:#1f1f1f}
+.offer-b{display:flex;align-items:center;gap:12px;padding-bottom:4px}
+.offer-go{height:28px;padding:0 12px;border:0;border-radius:100px;background:var(--success);color:#fff;font-size:13px;font-weight:500;cursor:pointer}.offer-go:hover{background:var(--success-fg)}
+.offer-no{height:28px;padding:0;border:0;background:transparent;color:var(--success-fg);font-size:13px;font-weight:500;cursor:pointer}.offer-no:hover{text-decoration:underline;text-underline-offset:2px}
+.offer-x{margin-top:7px;color:#1f1f1f}
+@keyframes offer-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.offer{animation:none}}
+
+
+/* My Claims is clear */
+.clearwrap{display:grid;place-items:center;background:radial-gradient(46% 42% at 50% 30%,rgba(42,153,83,.09),transparent 72%),radial-gradient(60% 55% at 50% 26%,rgba(64,91,242,.06),transparent 72%)}
+.clear{display:flex;flex-direction:column;align-items:center;text-align:center;padding:40px 24px;width:min(640px,100%)}
+.clr-art{position:relative;width:96px;height:96px;display:grid;place-items:center;margin-bottom:20px}
+.clr-badge{position:relative;z-index:2;width:72px;height:72px;border-radius:50%;background:var(--success);color:#fff;display:grid;place-items:center;box-shadow:0 0 0 8px rgba(42,153,83,.14),0 8px 24px rgba(42,153,83,.28);animation:clr-pop .5s cubic-bezier(.2,1.4,.4,1) both}
+.cf{position:absolute;left:50%;top:50%;margin:-6px 0 0 -3px;border-radius:2px;opacity:0;animation:clr-burst 1.7s cubic-bezier(.15,.7,.3,1) var(--d) both}
+.cf.rd{border-radius:50%}.cf0{background:var(--em-green)}.cf1{background:var(--em-blue)}.cf2{background:var(--em-purple)}.cf3{background:var(--em-orange)}
+@keyframes clr-burst{0%{opacity:0;transform:translate(0,0) rotate(0) scale(.4)}10%{opacity:1}70%{opacity:1}100%{opacity:0;transform:translate(var(--x),calc(var(--y) + 36px)) rotate(var(--r)) scale(1)}}
+@keyframes clr-pop{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.cf{display:none}.clr-badge{animation:none}}
+.clear h2,.clr-sub,.clr-stats,.clr-chips,.clear>.btn{position:relative;z-index:3}
+.clear h2{margin:0;font-size:24px;line-height:32px;font-weight:600;letter-spacing:-.01em;color:var(--fg1)}
+.clr-sub{margin:8px 0 24px;max-width:420px;color:var(--fg2);line-height:21px}
+.clr-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;width:100%}
+.clr-stat{border:1px solid var(--bs);border-radius:var(--r-card);background:var(--base);padding:14px 16px;text-align:left}
+.clr-stat span{color:var(--fg3)}.clr-stat b{display:block;margin-top:2px;font-size:22px;line-height:30px;font-weight:600;color:var(--fg1)}.clr-stat small{display:block;margin-top:2px;color:var(--fg3);font-size:12px}
+.clr-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:16px 0 24px}
+.clr-chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:var(--r-full);background:var(--d5);color:var(--fg2);font-size:12px}.clr-chip b{font-weight:600;color:var(--fg1)}
+
 .asgb{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:transparent;display:inline-grid;place-items:center;color:var(--fg2)}
 .asgb.empty{border:1px solid var(--bst);background:var(--base)}.asgb:hover{box-shadow:0 0 0 2px var(--accent-sub)}.asgb.empty:hover{background:var(--d5)}
 
@@ -2063,6 +2060,15 @@ font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--fg
 .hub-stat{border:1px solid var(--bs);border-radius:var(--r-card);padding:16px 20px;display:flex;flex-direction:column}
 .hub-ic{width:36px;height:36px;border-radius:50%;border:1px solid var(--bs);display:grid;place-items:center;margin-bottom:16px;color:var(--fg1);background:var(--base)}
 .hub-sl{color:var(--fg3)}.hub-stat b{font-size:24px;font-weight:600;line-height:1.3;letter-spacing:-.01em}.hub-note{color:var(--fg3);font-size:12px;margin-top:2px}
+
+/* hub: the selected card and the agent page under it */
+.hc{cursor:pointer}.hc.hc-new{cursor:pointer}
+.hc.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.hc:not(.hc-new):hover{border-color:var(--bst)}.hc.sel:hover{border-color:var(--accent)}
+.hub-hint{margin:24px 0 0;text-align:center;color:var(--fg3)}
+.hub-detail{margin-top:48px}
+.hub-detail .ag{max-width:none;padding:0 0 24px}
+
 .hub-tabs{display:inline-flex;gap:4px;padding:4px;border:1px solid var(--bs);border-radius:var(--r-soft);background:var(--solid2);margin-bottom:16px}
 .hub-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .hc{border:1px solid var(--bs);border-radius:var(--r-card);background:var(--base);overflow:hidden;display:flex;flex-direction:column;text-align:left}
@@ -2110,43 +2116,6 @@ font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--fg
 .bld-rule select{flex:1;height:32px;border:1px solid var(--bst);border-radius:var(--r-soft);background:var(--base);font:inherit;padding:0 8px}
 .sw:disabled{opacity:.4;cursor:default}
 @media (max-width:1200px){.bld{grid-template-columns:1fr}.bld-side{display:none}.bld-starters{grid-template-columns:repeat(2,minmax(0,1fr))}}
-
-/* My Claims context band and framed table */
-.clctx td{padding:0;border-bottom:1px solid var(--bs);background-color:var(--base);white-space:normal}
-.ctxwrap{display:flex;flex-direction:column;gap:10px;padding:8px 12px 12px;contain:inline-size}
-.clgrp.ctxopen td{border-bottom:0}
-.band{display:flex;background:linear-gradient(180deg,var(--ai-from),var(--ai-to));border:1px solid var(--bs);border-radius:var(--r-extra);padding:8px 0}
-.bcard{flex:1 1 0;min-width:0;padding:0 16px;display:flex;flex-direction:column;white-space:normal}
-.bcard + .bcard{border-left:1px solid var(--bs)}
-.bcard h3{margin:0;font-size:13px;font-weight:500;color:var(--fg1);line-height:21px}
-.bcard p{margin:0 0 8px;color:var(--fg2);line-height:21px;display:block;text-wrap:pretty;overflow-wrap:break-word}.bcard p:last-child{margin-bottom:0}
-.xlink{color:var(--fg-accent);cursor:pointer;text-decoration:none}.xlink:hover{text-decoration:underline;text-underline-offset:2px}.xlink svg{display:inline-block;margin-left:2px;vertical-align:-1px}.nw{white-space:nowrap}
-.b-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:2px 0 6px}
-.b-upd{display:inline-flex;align-items:center;gap:2px}.b-upd b{font-weight:500;color:var(--fg1);margin-right:4px}
-.vbtn{width:24px;height:24px;border:0;border-radius:var(--r-soft);background:transparent;color:var(--fg2);display:grid;place-items:center;padding:0}.vbtn:hover{background:var(--d5)}.vbtn.on{background:var(--accent-sub);color:var(--fg-accent)}
-.b-acts{display:inline-flex;align-items:center;gap:2px}
-.btn.tert{border-color:transparent;background:transparent;color:var(--fg-accent)}.btn.tert:hover{background:var(--accent-sub-h)}
-.btn.sec{background:transparent;border-color:var(--accent);color:var(--fg-accent)}.btn.sec:hover:not(:disabled){background:var(--accent-sub-h)}.btn.sec:disabled{opacity:1;cursor:default}
-.b-div{height:1px;background:var(--bs);margin:8px 0}
-.b-chg{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.b-chg b{font-weight:500;color:var(--fg1);margin-right:4px}
-.b-foot{display:flex;margin-top:8px}.b-foot .btn{margin-left:-14px}
-.b-strong{font-weight:500;color:var(--fg1)}
-.b-chip{display:inline-flex;align-items:center;min-height:28px;padding:3px 8px;background:var(--base);border-radius:var(--r-soft);color:var(--fg1);white-space:normal;max-width:100%;line-height:20px}.b-chip s{color:var(--fg2);margin:0 4px}
-.nest{border:1px solid var(--bs);border-radius:var(--r-soft);overflow:clip;contain:inline-size;width:100%}
-.nest-h{display:flex;align-items:center;gap:8px;width:100%;height:40px;padding:0 12px 0 8px;border:0;background:var(--base);color:var(--fg1);text-align:left;cursor:pointer}
-.nest-h:hover{background:var(--d5)}
-.nest-h svg{flex:none;color:var(--fg2);transition:transform .12s}.nest-h svg.rot{transform:rotate(-90deg)}
-.nest-t{font-weight:500}
-.nest-c{min-width:24px;height:20px;padding:0 6px;border-radius:var(--r-full);background:var(--neutral-sub);color:var(--fg1);font-size:12px;line-height:20px;text-align:center}
-.nest-b{overflow:auto;container-type:inline-size;border-top:1px solid var(--bs)}
-.nt{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;min-width:0}
-.nt th:not(.asg-h){position:static}
-.nt th.exp,.nt td.exp{width:14px;min-width:14px;padding:0}
-.nt th.sel,.nt td.sel{width:32px;min-width:32px}
-.nt td,.nt th{overflow:hidden;text-overflow:ellipsis}
-.nt .loadrow td{height:36px;padding:0;border-bottom:0;overflow:visible}
-.loadin{position:sticky;left:0;width:100cqw;height:36px;display:flex;align-items:center;justify-content:center}
-@media (max-width:1100px){.band{flex-direction:column}.bcard + .bcard{border-left:0;border-top:1px solid var(--bs);margin-top:12px;padding-top:12px}}
 
 .cpanel.fx{position:fixed;top:44px;right:8px;bottom:8px;width:440px;border:1px solid var(--bs);border-radius:var(--r-soft)}
 .cp-done{display:flex;gap:8px;align-items:flex-start;margin:8px 0;color:var(--fg1)}.cp-done svg{color:var(--success);flex:none;margin-top:3px}
