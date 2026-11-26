@@ -1,9 +1,9 @@
 {
   "name": "air-claims-prototype",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Clickable prototype of the Air My Claims worklist, Agents hub, agent pages and agent builder. Synthetic data only.",
+  "description": "Clickable prototype of the Air Hub, My Claims worklist, agent pages and agent builder. Synthetic data only.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

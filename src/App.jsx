@@ -2,11 +2,11 @@ import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
 import {
   ShieldPlus, Lightbulb, Calendar, Wrench, BookOpen, ChevronDown, ChevronsDownUp, Bell, Search, Mic, Sparkles,
   Settings, CircleHelp, Users, Ban, Repeat1, Circle, CircleCheck, UserPlus, Split, FilePlus, ListX,
-  X, Command, Info, SearchX, Plus, ClipboardCheck, FileText, Pencil, ShieldCheck, ArrowUp, MailOpen, Wallet, CircleSlash, FileX, Gavel, RefreshCw, LayoutGrid, Trash2, Pause, Play, Zap, Clock, ArrowLeft, ThumbsUp, ThumbsDown, ExternalLink, Check,
+  X, Command, Info, SearchX, Plus, ClipboardCheck, FileText, Pencil, ShieldCheck, ArrowUp, MailOpen, Wallet, CircleSlash, FileX, Gavel, RefreshCw, LayoutGrid, Trash2, Pause, Play, Zap, Clock, ArrowLeft, ThumbsUp, ThumbsDown, ExternalLink, Check, CircleAlert, ListChecks, HeartPulse, Code,
 } from "lucide-react";
 
 /* ============================================================
-   AIR prototype: Claims (My Claims worklist), Agents hub, Agent pages, Agent builder
+   AIR prototype: Hub, Claims (My Claims worklist), Agent pages, Agent builder
    Clickable demo. All data is synthetic and lives in memory.
    No patient information is used and nothing is sent anywhere.
    ============================================================ */
@@ -112,7 +112,7 @@ const PAYER_GROUPS = ["Medicare", "Medicaid", "Commercial"];
 const payerGroup = (payer) => (payer.startsWith("MEDICARE") ? "Medicare" : payer.includes("MEDICAID") ? "Medicaid" : "Commercial");
 const SEED_AGENTS = [
   {
-    id: "medicare", name: "Medicare Agent", init: "MA",
+    id: "medicare", name: "Medicare Agent", init: "MA", icon: "medicare",
     description: "Works Medicare claims as a first pass.",
     instructions: [
       "Work Medicare claims as a first pass. Never send, post or appeal on your own. Leave every result for review.",
@@ -126,7 +126,47 @@ const SEED_AGENTS = [
     rule: { payer: "Medicare", on: true },
     chats: [],
   },
+  {
+    id: "coding", name: "Coding Agent", init: "CA", icon: "coding",
+    description: "Checks the codes on denied and rejected claims and suggests the fix.",
+    instructions: [
+      "Check the diagnosis and procedure codes on denied and rejected claims as a first pass. Never send, post or appeal on your own. Leave every result for review.",
+      "Look for code pairs that conflict (Excludes1), symptom codes that are part of a diagnosis, and a 7th character that does not fit the visit.",
+      "Suggest the corrected codes and the diagnosis pointer for each line.",
+      "If you are unsure, return the claim with a short reason.",
+    ].join("\n"),
+    context: ["ICD-10 coding guidelines", "CPT coding guidelines", "Payer policies", "Appeals guide"],
+    rule: null,
+    chats: [],
+  },
+  {
+    id: "eligibility", name: "Eligibility Agent", init: "EA", icon: "eligibility",
+    description: "Checks coverage on the payer portal before a claim moves on.",
+    instructions: [
+      "Check coverage on the payer portal before a claim moves on. Never send, post or appeal on your own. Leave every result for review.",
+      "Confirm the plan was active on the date of service and that the member ID matches.",
+      "If coverage ended or another payer is primary, say which payer and suggest the change.",
+      "If you are unsure, return the claim with a short reason.",
+    ].join("\n"),
+    context: ["Payer portal guides", "Eligibility checklist", "Coordination of benefits rules"],
+    rule: null,
+    chats: [],
+  },
+  {
+    id: "posting", name: "Posting Agent", init: "PA", icon: "posting",
+    description: "Matches payments to claims and suggests the posting.",
+    instructions: [
+      "Match payments to claims and suggest the posting. Never post on your own. Leave every result for review.",
+      "Check the remittance total against the deposit before you suggest a posting.",
+      "If a posting would leave a negative balance, flag it for review.",
+      "If you are unsure, return the claim with a short reason.",
+    ].join("\n"),
+    context: ["Contract and fee schedule", "Remittance posting SOP", "Deposit verification guide"],
+    rule: null,
+    chats: [],
+  },
 ];
+const AGENT_ICONS = { medicare: HeartPulse, coding: Code, eligibility: ShieldCheck, posting: Wallet };
 const initials = (name) => name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "AG";
 const toAssignee = (a) => ({ id: a.id, name: a.name, init: a.init, color: "agent", kind: "agent" });
 const GROUP_BY_KEY = Object.fromEntries(GROUPS.map((g) => [g.key, g]));
@@ -209,20 +249,43 @@ function seedState() {
   const ids = base.filter((c) => payerGroup(c.payer) === "Medicare").map((c) => c.id);
   const a = doAssign(base, ids, "medicare", { auto: true, agentIds: ["medicare"], now, instant: 4, backdate: true, reason: "Assigned by the Medicare rule" });
   const b = advance(a.claims, now, true);
-  return { claims: b.claims, activity: [...b.events, ...a.events].sort((x, y) => y.t - x.t) };
+  let claims = b.claims, events = [...b.events, ...a.events];
+  const agentIds = SEED_AGENTS.map((x) => x.id);
+  const examples = [
+    { id: "coding", n: 12, instant: 9, reason: "Assigned when the claim was denied", rank: (c) => (c.status === "Rejections" ? 0 : 1), pick: (c) => c.status === "Rejections" || c.status === "Partial Denials" },
+    { id: "eligibility", n: 10, instant: 6, reason: "Assigned when the claim needed an eligibility check", rank: () => 0, pick: (c) => c.status === "Decision Pending" },
+    { id: "posting", n: 9, instant: 9, reason: "Assigned when a payment arrived", rank: (c) => (c.status === "Payment Posting" ? 0 : 1), pick: (c) => c.status === "Payment Posting" },
+  ];
+  examples.forEach((w) => {
+    const pick = claims.filter((c) => !c.work && c.assignee !== ME && w.pick(c)).sort((x, y) => w.rank(x) - w.rank(y)).slice(0, w.n).map((c) => c.id);
+    const r = doAssign(claims, pick, w.id, { auto: true, agentIds, now, instant: w.instant, backdate: true, reason: w.reason });
+    const r2 = advance(r.claims, now, true);
+    claims = r2.claims; events = [...r2.events, ...r.events, ...events];
+  });
+  return { claims, activity: events.sort((x, y) => y.t - x.t) };
 }
 
 /* ---------- Hub numbers: all read from the live claims and activity ---------- */
 const MIN_PER_RESULT = 6; /* assumption: minutes saved per approved result */
 function agentStats(a, claims) {
   const work = claims.filter((c) => c.work && c.work.agentId === a.id);
-  return { worked: work.length, ready: work.filter((c) => c.work.state === "ready").length, approved: work.filter((c) => c.work.state === "approved").length };
+  return { worked: work.length, working: work.filter((c) => c.work.state === "working").length, ready: work.filter((c) => c.work.state === "ready").length, approved: work.filter((c) => c.work.state === "approved").length };
 }
 /* Running: auto-assign is on or it has worked a claim. Draft: neither yet. Paused: you paused it. */
+const SCHEDULE = "weekdays at 6:00 AM"; /* in the prototype every agent runs on this schedule */
 function agentStatus(a, claims) {
   if (a.paused) return "Paused";
-  return (a.rule && a.rule.on) || agentStats(a, claims).worked > 0 ? "Running" : "Draft";
+  const n = agentStats(a, claims);
+  if (n.working > 0) return "Running";
+  return (a.rule && a.rule.on) || n.worked > 0 ? "Waiting on schedule" : "Draft";
 }
+const agoText = (t) => { const sec = Math.max(0, Math.round((Date.now() - t) / 1000)); if (sec < 60) return "just now"; const m = Math.round(sec / 60); if (m < 60) return m + " min ago"; const h = Math.round(m / 60); if (h < 24) return h + (h === 1 ? " hour ago" : " hours ago"); const d = Math.round(h / 24); return d + (d === 1 ? " day ago" : " days ago"); };
+const DISCOVER = [
+  { icon: Ban, name: "Denials Agent", text: "Suggest fixes for denied claims", desc: "Suggests how to fix denied claims and names the policy it used." },
+  { icon: FilePlus, name: "Secondary Claims Agent", text: "Draft secondary claims for Medicaid", desc: "Drafts the secondary claim when a claim needs coordination of benefits." },
+  { icon: FileX, name: "Rejections Agent", text: "Fix rejected claims with invalid subscriber details", desc: "Corrects subscriber details on rejected claims and prepares the resubmission." },
+  { icon: Clock, name: "Follow-up Agent", text: "Check claim status on the payer portal and set follow-ups", desc: "Checks claim status on the payer portal and sets the next follow-up." },
+];
 
 /* ---------- Agent builder: turns a plain description into a draft. Fake, keyword based. ---------- */
 const BASE_LINE = "Work claims as a first pass. Never send, post or appeal on your own. Leave every result for review.";
@@ -643,6 +706,31 @@ function Cb({ checked, indeterminate, onChange, label, disabled }) {
   return <input ref={ref} type="checkbox" className="cb" aria-label={label} checked={!!checked} disabled={disabled} onChange={onChange} onClick={(e) => e.stopPropagation()} />;
 }
 
+/* Group header line from Figma (10880:127410): "PAYER: Reason - CODE/CODE" as plain text, after the status tag and the amount chip */
+function groupParts(g) {
+  const flat = g.chips.flat(), withPayer = !!g.payer;
+  const rest = flat.slice(withPayer ? 1 : 0);
+  let reasons = rest.filter((x) => !isCode(x));
+  const codes = rest.filter(isCode);
+  let hd = withPayer ? flat[0] : null;
+  if (!hd && reasons.length > 1) { hd = reasons[0]; reasons = reasons.slice(1); }
+  const body = reasons.join(" / "), codesTxt = codes.length ? " - " + codes.join("/") : "";
+  const head = hd || body, tail = hd ? (body ? ": " + body : "") + codesTxt : codesTxt;
+  return { head, tail, full: head + tail };
+}
+function GroupLead({ g }) {
+  return (
+    <div className="clgin">
+      <Tag status={g.status} filled />
+      <span className="chip amt">
+        <span aria-hidden="true"><b className="amt-n">{money(g.total).slice(1)}</b><span className="amt-x"> Balance</span><span className="amt-s"> | </span><b className="amt-c">{g.count}</b><span className="amt-x"> {g.count === "1" ? "Claim" : "Claims"}</span></span>
+        <span className="vh">{money(g.total) + " balance, " + g.count + (g.count === "1" ? " claim" : " claims")}</span>
+      </span>
+      <span className="gline" title={groupParts(g).full}><b>{groupParts(g).head}</b>{groupParts(g).tail}</span>
+    </div>
+  );
+}
+
 function Tag({ status, row, filled }) {
   const m = STATUS[status];
   const I = m.icon;
@@ -799,7 +887,7 @@ function FilterRow({ assignees, value, onChange, onHide }) {
   );
 }
 
-function ClaimsTable({ state, groups, sel, open, onOpen, onToggle, onToggleGroup, onToggleAll, onAssignClick, onAgentClick, onOpenClaim, canOpen, tab, dir }) {
+function ClaimsTable({ state, groups, sel, open, onOpen, onToggle, onToggleGroup, onToggleAll, onAssignClick, onAgentClick, onOpenClaim, canOpen, tab, dir , onRetry }) {
   const rows = groups.flatMap((g) => g.rows);
   const nSel = rows.filter((r) => sel.has(r.id)).length;
   return (
@@ -826,6 +914,7 @@ function ClaimsTable({ state, groups, sel, open, onOpen, onToggle, onToggleGroup
               ))}
             </>
           )}
+          {state === "error" && <tr className="clempty"><td colSpan={COLS.length + 3}><div className="empty err" role="alert"><span className="err-ic"><CircleAlert size={20} /></span><b>Claims could not be loaded.</b><button className="link" onClick={onRetry}>Try again</button></div></td></tr>}
           {state === "empty" && <tr className="clempty"><td colSpan={COLS.length + 3}><div className="empty"><SearchX size={20} /><b>{tab === "mine" ? "No claims are assigned to you." : "No claims match."}</b><span>{tab === "mine" ? "Claims you assign to yourself show up here." : "Try a different tab."}</span></div></td></tr>}
           {state === "live" && groups.map((g) => {
             const isOpen = !!open[g.key];
@@ -836,13 +925,7 @@ function ClaimsTable({ state, groups, sel, open, onOpen, onToggle, onToggleGroup
                   <td className="exp"><button className="ibtn" aria-label={isOpen ? "Collapse group" : "Expand group"} aria-expanded={isOpen} onClick={() => onOpen(g.key)}><ChevronDown size={18} className={isOpen ? "" : "rot"} /></button></td>
                   <td className="sel"><Cb label={"Select all in " + g.status} checked={gSel === g.rows.length} indeterminate={gSel > 0 && gSel < g.rows.length} onChange={() => onToggleGroup(g)} /></td>
                   <td colSpan={COLS.length}>
-                    <div className="clgin">
-                      <Tag status={g.status} filled />
-                      {g.chips.map((c, i) => Array.isArray(c)
-                        ? <span key={i} className="chipset">{c.map((x) => <span key={x} className="chip">{x}</span>)}</span>
-                        : <span key={c} className="chip">{c}</span>)}
-                      <span className="chip amt"><Circle size={16} />{money(g.total)} | {g.count}</span>
-                    </div>
+                    <GroupLead g={g} />
                   </td>
                   <td className="asg-c"><AssigneeStack dir={dir} ids={g.rows.map((r) => r.assignee).filter(Boolean)} /></td>
                 </tr>
@@ -899,14 +982,14 @@ function ActionStep({ a, mode, vote, onVote, onAccept, notify }) {
               <div className="st-foot">
                 <div className="st-chg"><span>What will change:</span>
                   {shown.map(([l, f, t], i) => <span key={i} className="st-chip">{l}: <s>{f}</s> &rarr; {t}</span>)}
-                  {extra > 0 && <button className="st-chip st-more" aria-expanded={all} onClick={() => setAll(!all)}>{all ? "Show less" : "+" + extra}</button>}
+                  {extra > 0 && <button className="st-chip st-more" aria-expanded={all} title={all ? "Show fewer changes" : "Show " + extra + " more " + (extra === 1 ? "change" : "changes")} onClick={() => setAll(!all)}>{all ? "Show less" : "+" + extra}<ChevronDown size={12} className={all ? "up" : ""} /></button>}
                 </div>
                 <div className="st-acts">
-                  <button className={"vbtn" + (vote === "up" ? " on" : "")} aria-label="Helpful" aria-pressed={vote === "up"} onClick={() => onVote("up")}><ThumbsUp size={16} /></button>
-                  <button className={"vbtn" + (vote === "down" ? " on" : "")} aria-label="Not helpful" aria-pressed={vote === "down"} onClick={() => onVote("down")}><ThumbsDown size={16} /></button>
-                  <button className="vbtn note" aria-label="View medical record" onClick={notify}><FileText size={16} /></button>
+                  <button className={"vbtn" + (vote === "up" ? " on" : "")} aria-label="Helpful" title="Helpful" aria-pressed={vote === "up"} onClick={() => onVote("up")}><ThumbsUp size={16} /></button>
+                  <button className={"vbtn" + (vote === "down" ? " on" : "")} aria-label="Not helpful" title="Not helpful" aria-pressed={vote === "down"} onClick={() => onVote("down")}><ThumbsDown size={16} /></button>
+                  <button className="vbtn note" aria-label="View medical record" title="View medical record" onClick={notify}><FileText size={16} /></button>
                   <span className="st-sep" />
-                  <button className="btn primary" onClick={onAccept}>Accept</button>
+                  <button className="btn primary" onClick={(e) => onAccept(e.detail === 0)}>Accept</button>
                 </div>
               </div>
             </div>
@@ -957,7 +1040,7 @@ function AllClear({ claims, goneIds, onWorkable }) {
   );
 }
 
-function MyClaimsTable({ state, groups, sel, onToggle, onToggleGroup, onToggleAll, dir, gOpen, onToggleGroupOpen, open, onToggleOpen, step, onAccept, votes, onVote, onAssignClick, notify, allDone, claims, goneIds, onWorkable }) {
+function MyClaimsTable({ state, groups, sel, onToggle, onToggleGroup, onToggleAll, dir, gOpen, onToggleGroupOpen, open, onToggleOpen, step, onAccept, votes, onVote, onAssignClick, notify, allDone, claims, goneIds, onWorkable, onRetry, onTableKey }) {
   if (state === "clear" || (state === "empty" && allDone)) return <AllClear claims={claims} goneIds={goneIds} onWorkable={onWorkable} />;
   const rows = groups.flatMap((g) => g.rows);
   const nSel = rows.filter((r) => sel.has(r.id)).length;
@@ -966,7 +1049,7 @@ function MyClaimsTable({ state, groups, sel, onToggle, onToggleGroup, onToggleAl
     return (
       <React.Fragment key={r.id}>
         <tr className={"clrow" + (sel.has(r.id) ? " picked" : "")}>
-          <td className="exp stripe"><button className="ibtn" aria-label={isOpen ? "Collapse claim " + r.id : "Expand claim " + r.id} aria-expanded={isOpen} onClick={() => onToggleOpen(r.id)}><ChevronDown size={18} className={isOpen ? "" : "rot"} /></button></td>
+          <td className="exp stripe"><button className="ibtn" aria-label={isOpen ? "Collapse claim " + r.id : "Expand claim " + r.id} aria-expanded={isOpen} onClick={(e) => onToggleOpen(r.id, e.detail === 0)}><ChevronDown size={18} className={isOpen ? "" : "rot"} /></button></td>
           <td className="sel"><Cb label={"Select " + r.id} checked={sel.has(r.id)} onChange={() => onToggle(r.id)} /></td>
           <td>{r.id}</td>
           <td><span className="stcell"><Tag status={r.status} row />{r.work && WORK_LABEL[r.work.state] && <WorkTag state={r.work.state} />}</span></td>
@@ -981,7 +1064,7 @@ function MyClaimsTable({ state, groups, sel, onToggle, onToggleGroup, onToggleAl
         {isOpen && (
           <tr className="myctx">
             <td colSpan={COLS.length + 3}>
-              <div className="mypanel">
+              <div className="mypanel" id={"panel-" + r.id} tabIndex={-1} role="region" aria-label={"Claim " + r.id + " details"}>
                 <div className="mp-l">
                   <h3>Where things stand</h3><p>{segs(b.stand, notify)}</p>
                   <h3>What to do next</h3><p>{segs(b.next, notify)}</p>
@@ -990,7 +1073,7 @@ function MyClaimsTable({ state, groups, sel, onToggle, onToggleGroup, onToggleAl
                   {b.actions.map((a, i) => (
                     <ActionStep key={i} a={a} vote={votes[r.id + ":" + i]} onVote={(v) => onVote(r.id + ":" + i, v)} notify={notify}
                       mode={i === 0 ? (st === 0 ? "active" : "done") : st === 0 ? "waiting" : st === 1 ? "active" : "done"}
-                      onAccept={() => onAccept(r, i, a)} />
+                      onAccept={(kb) => onAccept(r, i, a, kb)} />
                   ))}
                 </div>
               </div>
@@ -1002,7 +1085,7 @@ function MyClaimsTable({ state, groups, sel, onToggle, onToggleGroup, onToggleAl
   };
   return (
     <div className="clwrap">
-      <table className="cltbl mytbl" aria-busy={state === "loading"}>
+      <table className="cltbl mytbl" id="claims-list" aria-busy={state === "loading"} onKeyDown={onTableKey}>
         <thead>
           <tr>
             <th className="exp" />
@@ -1024,23 +1107,19 @@ function MyClaimsTable({ state, groups, sel, onToggle, onToggleGroup, onToggleAl
               ))}
             </>
           )}
+          {state === "error" && <tr className="clempty"><td colSpan={COLS.length + 3}><div className="empty err" role="alert"><span className="err-ic"><CircleAlert size={20} /></span><b>Claims could not be loaded.</b><button className="link" onClick={onRetry}>Try again</button></div></td></tr>}
           {state === "empty" && <tr className="clempty"><td colSpan={COLS.length + 3}><div className="empty"><SearchX size={20} /><b>No claims are assigned to you.</b><span>Claims you assign to yourself show up here.</span></div></td></tr>}
-          {state === "live" && groups.map((g) => {
+          {state === "live" && groups.map((g, gi) => {
             const isOpen = !!gOpen[g.key];
             const gSel = g.rows.filter((r) => sel.has(r.id)).length;
             return (
               <React.Fragment key={g.key}>
-                <tr className="clgrp">
+                {gi > 0 && <tr className="grpgap" aria-hidden="true"><td colSpan={COLS.length + 3} /></tr>}
+                <tr className={"clgrp" + (isOpen ? " open" : "")}>
                   <td className="exp"><button className="ibtn" aria-label={isOpen ? "Collapse group" : "Expand group"} aria-expanded={isOpen} onClick={() => onToggleGroupOpen(g.key)}><ChevronDown size={18} className={isOpen ? "" : "rot"} /></button></td>
                   <td className="sel"><Cb label={"Select all in " + g.status} checked={gSel === g.rows.length} indeterminate={gSel > 0 && gSel < g.rows.length} onChange={() => onToggleGroup(g)} /></td>
                   <td colSpan={COLS.length}>
-                    <div className="clgin">
-                      <Tag status={g.status} filled />
-                      {g.chips.map((c, i) => Array.isArray(c)
-                        ? <span key={i} className="chipset">{c.map((x) => <span key={x} className="chip">{x}</span>)}</span>
-                        : <span key={c} className="chip">{c}</span>)}
-                      <span className="chip amt"><Circle size={16} />{money(g.total)} | {g.count}</span>
-                    </div>
+                    <GroupLead g={g} />
                   </td>
                   <td className="asg-c"><AssigneeStack dir={dir} ids={g.rows.map((r) => r.assignee).filter(Boolean)} /></td>
                 </tr>
@@ -1171,7 +1250,21 @@ function ClaimsPage({ notify, claims, agents, assign, review, editProposal, send
   }).filter((g) => g.rows.length);
   const firstG = tab === "mine" && myGroups.length ? myGroups[0] : null;
   const firstId = firstG ? firstG.rows[0].id : null;
-  useEffect(() => { if (firstG) { setMyOpen((o) => ({ ...o, [firstG.key]: true })); setRowOpen((o) => ({ ...o, [firstId]: true })); } }, [firstId]);
+  useEffect(() => { if (firstG) { setMyOpen({ [firstG.key]: true }); setRowOpen((o) => ({ ...o, [firstId]: true })); } }, [firstId]);
+  /* when the group you are working in is finished, the next group opens with its first claim */
+  const keysStr = myGroups.map((g) => g.key).join(",");
+  const prevGroups = useRef({ keys: [], open: null });
+  useEffect(() => {
+    const keys = myGroups.map((g) => g.key), prev = prevGroups.current;
+    if (tab === "mine" && prev.open && !keys.includes(prev.open) && keys.length) {
+      const at = prev.keys.indexOf(prev.open);
+      const next = myGroups.find((g) => prev.keys.indexOf(g.key) > at) || myGroups[0];
+      setMyOpen({ [next.key]: true }); setRowOpen((o) => ({ ...o, [next.rows[0].id]: true }));
+      prevGroups.current = { keys, open: next.key };
+      return;
+    }
+    prevGroups.current = { keys, open: Object.keys(myOpen).find((k) => myOpen[k]) || null };
+  }, [keysStr, myOpen]);
   const toggleMyGroup = (g) => setSel((p) => { const n = new Set(p); const all = g.rows.every((r) => n.has(r.id)); g.rows.forEach((r) => (all ? n.delete(r.id) : n.add(r.id))); return n; });
   /* when the last Full Denial in My Claims is solved, the app offers to build an agent */
   useEffect(() => {
@@ -1180,11 +1273,38 @@ function ClaimsPage({ notify, claims, agents, assign, review, editProposal, send
     const left = full.filter((x) => x.assignee === ME && !myGone.includes(x.id)).length;
     if (doneFull > 0 && left === 0) onFullDenialsDone(doneFull);
   }, [myGone]);
+  /* keyboard: a claim opened with the keyboard moves focus into its panel */
+  const toggleClaimOpen = (id, kb) => {
+    const opening = !rowOpen[id];
+    setRowOpen((o) => ({ ...o, [id]: !o[id] }));
+    if (kb && opening) setTimeout(() => { const el = document.getElementById("panel-" + id); if (el) el.focus(); }, 30);
+  };
+  const jumpToList = (e) => { e.preventDefault(); const b = document.querySelector(".clwrap tbody .exp .ibtn"); if (b) b.focus(); };
+  const onTableKey = (e) => {
+    const t = e.target;
+    if (!t.matches || !t.matches("tbody .exp .ibtn")) return;
+    const stops = [...e.currentTarget.querySelectorAll("tbody .exp .ibtn")], i = stops.indexOf(t);
+    if (i < 0) return;
+    const go = (n) => { const el = stops[Math.max(0, Math.min(stops.length - 1, n))]; if (el) { e.preventDefault(); el.focus(); el.scrollIntoView({ block: "nearest" }); } };
+    if (e.key === "ArrowDown") go(i + 1);
+    else if (e.key === "ArrowUp") go(i - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(stops.length - 1);
+    else if (e.key === "ArrowRight" && t.getAttribute("aria-expanded") === "false") { e.preventDefault(); t.click(); }
+    else if (e.key === "ArrowLeft" && t.getAttribute("aria-expanded") === "true") { e.preventDefault(); t.click(); }
+  };
+  /* presentation mode hides the Demo state pill: open the page with ?present, or press Shift+P */
+  const [present, setPresent] = useState(() => /[?&]present(=|&|$)/.test(window.location.search));
+  useEffect(() => {
+    const h = (e) => { const tg = e.target; if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === "p" && !(tg && (/^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName) || tg.isContentEditable))) setPresent((v) => !v); };
+    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
+  }, []);
   /* Accept the first action: the second activates. Accept the second: the claim leaves the list. */
-  const acceptStep = (c, i, a) => {
-    if (i === 0) { onMyStep(c.id, 1); notify("Accepted: " + a.title); return; }
+  const acceptStep = (c, i, a, kb) => {
+    if (i === 0) { onMyStep(c.id, 1); notify("Accepted: " + a.title); if (kb) setTimeout(() => { const b = document.querySelector("#panel-" + c.id + " .st-active .btn.primary"); if (b) b.focus(); }, 80); return; }
     onMyStep(c.id, 2); notify("Accepted: " + a.title + ". Claim " + c.id + " is done and leaves My Claims. Nothing was sent in this prototype.");
-    setTimeout(() => { onMyGone(c.id); setSel((p) => { const n = new Set(p); n.delete(c.id); return n; }); }, 700);
+    setTimeout(() => { onMyGone(c.id); setSel((p) => { const n = new Set(p); n.delete(c.id); return n; });
+      if (kb) setTimeout(() => { const el = document.querySelector(".mypanel") || document.querySelector(".mytbl tbody .exp .ibtn"); if (el) el.focus(); }, 150); }, 700);
   };
 
   const toggle = (id) => setSel((p) => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -1204,7 +1324,7 @@ function ClaimsPage({ notify, claims, agents, assign, review, editProposal, send
 
   return (
     <div className="clpage">
-      {state === "error" && <div className="cl-err"><Banner>Claims could not be loaded.<button className="link" onClick={() => setDemo("live")}>Try again</button></Banner></div>}
+      <a className="skip" href="#claims-list" onClick={jumpToList}>Jump to claims list</a>
       <div className="cl-top">
         <ClaimsTabs value={tab} onChange={setTab} notify={notify} />
         <div className="cl-act">
@@ -1220,13 +1340,13 @@ function ClaimsPage({ notify, claims, agents, assign, review, editProposal, send
       {filtersOpen && <FilterRow assignees={assignees} value={fAssignee} onChange={setFAssignee} onHide={() => setFiltersOpen(false)} />}
       {tab === "mine" ? (
         <MyClaimsTable state={state} groups={state === "live" ? myGroups : []} sel={sel} onToggle={toggle} onToggleGroup={toggleMyGroup} onToggleAll={toggleAll} dir={dir}
-          gOpen={myOpen} onToggleGroupOpen={(k) => setMyOpen((o) => ({ ...o, [k]: !o[k] }))} open={rowOpen} onToggleOpen={(id) => setRowOpen((o) => ({ ...o, [id]: !o[id] }))} step={myStep} onAccept={acceptStep}
+          gOpen={myOpen} onToggleGroupOpen={(k) => setMyOpen((o) => (o[k] ? {} : { [k]: true }))} open={rowOpen} onToggleOpen={toggleClaimOpen} step={myStep} onAccept={acceptStep} onRetry={() => setDemo("live")} onTableKey={onTableKey}
           votes={votes} onVote={(k, v) => setVotes((p) => ({ ...p, [k]: p[k] === v ? null : v }))}
           onAssignClick={(el, ids) => openAssign(el, ids, false)} notify={notify} allDone={myGone.length > 0} claims={claims} goneIds={myGone} onWorkable={() => setTab("workable")} />
       ) : (
         <ClaimsTable state={state} groups={state === "live" ? groups : []} sel={sel} open={open} tab={tab} dir={dir}
           onOpen={(k) => setOpen((o) => ({ ...o, [k]: !o[k] }))} onToggle={toggle} onToggleGroup={toggleGroup} onToggleAll={toggleAll}
-          onAssignClick={(el, ids) => openAssign(el, ids, false)} onAgentClick={openAgent} onOpenClaim={setPanelId} canOpen={CLAIMS_PANEL} />
+          onAssignClick={(el, ids) => openAssign(el, ids, false)} onAgentClick={openAgent} onOpenClaim={setPanelId} canOpen={CLAIMS_PANEL} onRetry={() => setDemo("live")} />
       )}
       {sel.size > 0 && state === "live" && <BulkBar n={sel.size} onAssign={(el) => openAssign(el, [...sel], true)} onAsk={notify} onClear={() => { setSel(new Set()); setPop(null); }} />}
       {pop && <AssignPopover anchor={pop.anchor} ids={pop.ids} claims={claims} list={assignees} onPick={pick} onClose={() => setPop(null)} />}
@@ -1234,7 +1354,7 @@ function ClaimsPage({ notify, claims, agents, assign, review, editProposal, send
         onOpen={() => { setCard(null); goAgent(card.claim.assignee); }}
         onChange={(e) => { const c = card; setCard(null); setPop({ anchor: { ...c.anchor, above: false }, ids: [c.claim.id], bulk: false }); }} />}
       {panelClaim && <ClaimPanel claim={panelClaim} dir={dir} onClose={() => setPanelId(null)} onReview={review} onEdit={editProposal} onChat={sendChat} goAgent={goAgent} />}
-      <DemoSwitch value={demo} onChange={setDemo} />
+      {!present && <DemoSwitch value={demo} onChange={setDemo} />}
     </div>
   );
 }
@@ -1391,66 +1511,147 @@ function AgentPage({ agent, claims, activity, dir, onUpdate, onRule, onApprove, 
   );
 }
 
-function HubPage({ agents, claims, activity, onOpen, onNew, onPause, onDelete, detail }) {
+function Metrics({ items }) {
+  return <span className="hx-m">{items.map(([l, v]) => <span key={l}><i>{l}</i> <b>{v}</b></span>)}</span>;
+}
+function AgentRow({ r, open, onToggle, activity, onOpen, onPause, onDelete }) {
+  const { a, st, s: n } = r, k = st === "Waiting on schedule" ? "waiting" : st.toLowerCase();
+  const done = n.worked ? Math.round(((n.worked - n.working) / n.worked) * 100) : 0;
+  const Ic = AGENT_ICONS[a.icon];
+  const events = activity.filter((e) => e.agentId === a.id).sort((x, y) => y.t - x.t);
+  const why = {};
+  activity.forEach((e) => { if (e.agentId === a.id && /-a-/.test(e.id)) why[e.text] = (why[e.text] || 0) + 1; });
+  const reasons = Object.entries(why).sort((x, y) => y[1] - x[1]);
+  const ruleLine = a.paused ? "This agent is paused, so it takes no new claims." : a.rule && a.rule.on ? "Auto-assign is on. Every " + a.rule.payer + " claim that needs action goes to " + a.name + "." : "Auto-assign is off. This agent only works claims that were assigned to it.";
+  return (
+    <div className={"hx-item" + (open ? " open" : "")}>
+      <div className="hx-row">
+        <button className="hx-main" aria-expanded={open} aria-controls={"hx-p-" + a.id} onClick={onToggle}>
+          <span className="hx-tile">{Ic ? <Ic size={24} /> : <AgentEmblem size={24} animate={false} />}{n.ready > 0 && <span className="hx-dot" role="img" aria-label={n.ready + " ready for review"} />}</span>
+          <span className="hx-txt"><b className="hx-name">{a.name}</b><Metrics items={[["Claims worked", n.worked], ["Completed", done + "%"], ["Queue", n.working], ["Need review", n.ready]]} /></span>
+        </button>
+        <span className={"hc-st " + k}><i />{st}</span>
+        <button className="btn" onClick={() => onOpen(a)}>Open</button>
+      </div>
+      {open && (
+        <div className="hx-panels" id={"hx-p-" + a.id}>
+          <section className="hx-pn" aria-label="What the system did">
+            <h3>What the system did</h3>
+            <p>{n.worked ? "Worked " + n.worked + (n.worked === 1 ? " claim" : " claims") + ". " + n.ready + " need your review and " + n.approved + " are approved." : "No claims worked yet."}{k === "waiting" ? " Waiting for the next run, " + SCHEDULE + "." : ""}</p>
+            {events.length > 0 && <ul className="hx-ev">{events.slice(0, 4).map((e) => <li key={e.id}><span>{e.text}</span><em>Claim {e.claimId} &middot; {agoText(e.t)}</em></li>)}</ul>}
+            {events.length > 4 && <button className="link" onClick={() => onOpen(a)}>See all activity</button>}
+          </section>
+          <section className="hx-pn" aria-label="Why these claims are yours">
+            <h3>Why these claims are yours</h3>
+            <p>{ruleLine}</p>
+            {reasons.length > 0 ? <ul className="hx-why">{reasons.map(([txt, c]) => <li key={txt}><b>{c}</b><span>{txt}</span></li>)}</ul> : <p>No claims have been assigned yet.</p>}
+          </section>
+          <div className="hx-ft">
+            <button className="btn" onClick={() => onPause(a)}>{a.paused ? <Play size={16} /> : <Pause size={16} />}{a.paused ? "Resume" : "Pause"}</button>
+            <button className="btn" onClick={() => onDelete(a)}><Trash2 size={16} />Delete</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+/* Today's tasks: your own worklist, shown first in the Hub (not an agent) */
+function TodayRow({ mine, solved, open, onToggle, onOpenToday }) {
+  const left = mine.length, by = {};
+  mine.forEach((c) => { by[c.status] = (by[c.status] || 0) + 1; });
+  const groups = Object.entries(by).sort((x, y) => y[1] - x[1]).slice(0, 5);
+  return (
+    <div className={"hx-item" + (open ? " open" : "")}>
+      <div className="hx-row">
+        <button className="hx-main" aria-expanded={open} aria-controls="hx-p-today" onClick={onToggle}>
+          <span className="hx-tile"><ListChecks size={24} />{left > 0 && <span className="hx-badge" role="img" aria-label={left + " claims left for you"}>{left}</span>}</span>
+          <span className="hx-txt"><b className="hx-name">Today's tasks</b><Metrics items={[["Left for you", left], ["Solved today", solved]]} /></span>
+        </button>
+        <span />
+        <button className="btn" onClick={onOpenToday}>Open</button>
+      </div>
+      {open && (
+        <div className="hx-panels" id="hx-p-today">
+          <section className="hx-pn" aria-label="What the system did">
+            <h3>What the system did</h3>
+            <p>{left > 0 ? "Grouped your " + left + (left === 1 ? " claim" : " claims") + " and suggested the next step on each one." : "Everything assigned to you is solved."} {solved > 0 ? "You solved " + solved + " so far today." : "You have not solved any yet today."}</p>
+            <button className="link" onClick={onOpenToday}>Open My Claims</button>
+          </section>
+          <section className="hx-pn" aria-label="Why these claims are yours">
+            <h3>Why these claims are yours</h3>
+            <p>These claims are assigned to you. They stay with you until you solve them or hand them to someone else.</p>
+            {groups.length > 0 && <ul className="hx-why">{groups.map(([st, c]) => <li key={st}><b>{c}</b><span>{st}</span></li>)}</ul>}
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HubPage({ agents, claims, activity, onOpen, onNew, onPause, onDelete, onAddTemplate, mine, solved, onOpenToday }) {
   const [tab, setTab] = useState("all");
+  const [view, setView] = useState("yours");
+  const [openId, setOpenId] = useState(null); /* one agent open at a time */
   const [del, setDel] = useState(null);
-  const [selId, setSelId] = useState(null); /* the card you tapped: its agent page shows below */
-  const selected = agents.find((a) => a.id === selId) || null;
-  const pickCard = (id) => setSelId((cur) => (cur === id ? null : id));
   const rows = agents.map((a) => ({ a, st: agentStatus(a, claims), s: agentStats(a, claims) }));
-  const count = (k) => (k === "all" ? rows.length : rows.filter((r) => r.st.toLowerCase() === k).length);
+  const keyOf = (st) => (st === "Waiting on schedule" ? "waiting" : st.toLowerCase());
+  const active = rows.filter((r) => r.st === "Running" || r.st === "Waiting on schedule").length;
   const ids = new Set(agents.map((a) => a.id));
   const weekAgo = Date.now() - 7 * 864e5;
   const actions = activity.filter((e) => ids.has(e.agentId) && e.t >= weekAgo).length;
   const approved = rows.reduce((n, r) => n + r.s.approved, 0);
   const mins = approved * MIN_PER_RESULT;
   const saved = mins >= 60 ? (mins / 60).toFixed(1) + " hrs" : mins + " min";
-  const shown = rows.filter((r) => tab === "all" || r.st.toLowerCase() === tab);
+  const scheduled = active * 5; /* one run per weekday for each active agent */
+  const alerts = rows.filter((r) => r.s.ready > 0).length; /* one alert to you for each agent that has results ready */
+  const shown = rows.filter((r) => tab === "all" || keyOf(r.st) === tab);
   const stat = (icon, label, value, note) => (
     <div className="hub-stat"><span className="hub-ic">{icon}</span><span className="hub-sl">{label}</span><b>{value}</b>{note && <span className="hub-note">{note}</span>}</div>
   );
   return (
     <div className="hub">
-      <div className="hub-top"><h1>Agents</h1><button className="btn primary" onClick={onNew}><FigIcon name="add" size={18} />New agent</button></div>
+      <div className="hub-top"><h1>Hub</h1><button className="btn primary" onClick={onNew}><FigIcon name="add" size={18} />Add Agent</button></div>
       <div className="hub-stats">
-        {stat(<AgentEmblem size={20} animate={false} />, "Active agents", count("running") + "/" + rows.length)}
+        {stat(<AgentEmblem size={20} animate={false} />, "Active agents", active + "/" + rows.length)}
         {stat(<Zap size={18} />, "Actions taken (7d)", actions.toLocaleString())}
         {stat(<CircleCheck size={18} />, "Approved results", approved.toLocaleString())}
         {stat(<Clock size={18} />, "Time saved (est)", saved, MIN_PER_RESULT + " min per approved result")}
+        {stat(<RefreshCw size={18} />, "Scheduled runs (7d)", scheduled.toLocaleString())}
+        {stat(<Bell size={18} />, "Alerts sent", alerts.toLocaleString())}
       </div>
-      <div className="hub-tabs" role="tablist">
-        {[["all", "All"], ["running", "Running"], ["paused", "Paused"], ["draft", "Draft"]].map(([k, l]) => (
-          <button key={k} role="tab" aria-selected={tab === k} className={"cl-tab" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{l}{k === "all" ? "" : " (" + count(k) + ")"}</button>
-        ))}
+      <h2 className="hub-h2">Agents</h2>
+      <div className="hub-bar">
+        {view === "yours" ? (
+          <div className="hub-ftabs" role="tablist" aria-label="Filter agents">
+            {[["all", "All"], ["running", "Running"], ["waiting", "Waiting on schedule"], ["paused", "Paused"]].map(([k, l]) => (
+              <button key={k} role="tab" aria-selected={tab === k} className={"cl-tab" + (tab === k ? " on" : "")} onClick={() => setTab(k)}>{l}</button>
+            ))}
+          </div>
+        ) : <span />}
+        <div className="seg" role="tablist" aria-label="Agents view">
+          <button role="tab" aria-selected={view === "yours"} className={view === "yours" ? "on" : ""} onClick={() => setView("yours")}>Yours</button>
+          <button role="tab" aria-selected={view === "discover"} className={view === "discover" ? "on" : ""} onClick={() => setView("discover")}>Discover</button>
+        </div>
       </div>
-      <div className="hub-grid">
-        {shown.map(({ a, st, s: n }) => (
-          <article key={a.id} className={"hc" + (selId === a.id ? " sel" : "")} aria-label={a.name} aria-current={selId === a.id ? "true" : undefined} tabIndex={0}
-            onClick={() => pickCard(a.id)} onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); pickCard(a.id); } }}>
-            <div className="hc-h">
-              <span className="hc-ic"><AgentEmblem size={24} /></span>
-              <div className="hc-t"><b>{a.name}</b><span>{a.rule ? a.rule.payer + " claims" : "No rule yet"} &middot; {a.paused ? "Auto-assign paused" : a.rule && a.rule.on ? "Auto-assign on" : "Auto-assign off"}</span></div>
-              <span className={"hc-st " + st.toLowerCase()}><i />{st}</span>
-            </div>
-            <div className="hc-b">
-              <div className="hc-r"><span>Claims worked</span><b>{n.worked}</b></div>
-              <div className="hc-r"><span>Ready for review</span><b className="acc">{n.ready}</b></div>
-              <div className="hc-r"><span>Approved</span><b>{n.approved}</b></div>
-              <div className="hc-f">
-                <button className="btn" onClick={(e) => { e.stopPropagation(); onPause(a); }}>{a.paused ? <Play size={16} /> : <Pause size={16} />}{a.paused ? "Resume" : "Pause"}</button>
-                <button className="btn" onClick={(e) => { e.stopPropagation(); onOpen(a); }}>Open</button>
-                <span className="grow" />
-                <button className="ibtn" aria-label={"Delete " + a.name} onClick={(e) => { e.stopPropagation(); setDel(a); }}><Trash2 size={18} /></button>
-              </div>
-            </div>
-          </article>
-        ))}
-        {(tab === "all" || shown.length === 0) && (
-          <button className="hc hc-new" onClick={onNew}><span className="hub-ic"><FigIcon name="add" size={18} /></span><b>Create new agent</b></button>
-        )}
-      </div>
-      {!selected && agents.length > 0 && <p className="hub-hint">Select an agent to see its tasks, activity and settings here.</p>}
-      {selected && <section className="hub-detail" aria-label={selected.name + " details"}>{detail(selected)}</section>}
+      {view === "yours" ? (
+        <div className="hx-list">
+          {tab === "all" && <TodayRow mine={mine} solved={solved} open={openId === "today"} onToggle={() => setOpenId((cur) => (cur === "today" ? null : "today"))} onOpenToday={onOpenToday} />}
+          {shown.map((r) => <AgentRow key={r.a.id} r={r} open={openId === r.a.id} onToggle={() => setOpenId((cur) => (cur === r.a.id ? null : r.a.id))} activity={activity} onOpen={onOpen} onPause={onPause} onDelete={setDel} />)}
+          {shown.length === 0 && <div className="empty"><b>No agents here.</b><span>{tab === "all" ? "Add an agent to get started." : "Try another filter."}</span></div>}
+        </div>
+      ) : (
+        <div className="hx-list">
+          {DISCOVER.map((t) => {
+            const I = t.icon, added = agents.some((a) => a.name === t.name);
+            return (
+              <div key={t.name} className="hx-item"><div className="hx-row">
+                <div className="hx-main static"><span className="hx-tile"><I size={24} /></span><span className="hx-txt"><b className="hx-name">{t.name}</b><span className="hx-desc">{t.desc}</span></span></div>
+                <button className="btn" disabled={added} onClick={() => onAddTemplate(t)}>{added ? "Added" : "Add"}</button>
+              </div></div>
+            );
+          })}
+        </div>
+      )}
       {del && (
         <Dialog title={"Delete " + del.name + "?"} confirmLabel="Delete agent" onConfirm={() => { onDelete(del); setDel(null); }} onCancel={() => setDel(null)}>
           <p>{agentStats(del, claims).worked} claims it worked go back to unassigned. This cannot be undone.</p>
@@ -1627,7 +1828,7 @@ function AgentBuilder({ agents, onCreate, onCancel, seed }) {
 
 
 export default function App() {
-  const [page, setPage] = useState("claims"); /* the prototype starts in My Claims */
+  const [page, setPage] = useState("agents"); /* the prototype starts on the Hub */
   const [navOff, setNavOff] = useState(false);
   const [msg, setMsg] = useState("");
   const [agents, setAgents] = useState(SEED_AGENTS);
@@ -1652,6 +1853,12 @@ export default function App() {
   const offerTasks = offer && offer.agentId ? claims.filter((c) => c.assignee === offer.agentId && c.work) : [];
   const offerProgress = { total: offerTasks.length, ready: offerTasks.filter((c) => c.work.state === "ready").length };
   const laterOffer = () => setOffer(null);
+  const addTemplate = (t) => {
+    const taken = agents.map((a) => a.name), r = draftFrom(t.text, taken);
+    let name = t.name, k = 2; while (taken.includes(name)) name = t.name + " " + k++;
+    r.draft.name = name; r.draft.description = t.desc;
+    setBuilderSeed({ id: Date.now(), text: t.text, reply: r.reply, draft: r.draft }); setPage("agent:new");
+  };
   useEffect(() => { if (page !== "agent:new") setBuilderSeed(null); }, [page]);
   const claimsRef = useRef(claims);
   claimsRef.current = claims;
@@ -1739,7 +1946,7 @@ export default function App() {
           <main className="canvas">
             {page === "claims" && <ClaimsPage notify={notify} claims={claims} agents={agents} assign={assign} review={review} editProposal={editProposal} sendChat={sendChat} myStep={myStep} onMyStep={(id, n) => setMyStep((p) => ({ ...p, [id]: n }))} myGone={myGone} onFullDenialsDone={onFullDenialsDone} onMyGone={(id) => setMyGone((p) => (p.includes(id) ? p : [...p, id]))} intent={intent} clearIntent={() => setIntent(null)} goAgent={(id) => setPage("agent:" + id)} />}
             {agent && <AgentPage key={agent.id} agent={agent} claims={claims} activity={activity} onUpdate={(patch) => update(agent.id, patch)} onRule={(r) => setRule(agent, r)} onApprove={(ids) => review(ids, "approved")} onReview={review} onEdit={editProposal} onChat={sendChat} dir={dir} goClaims={goClaims} notify={notify} />}
-            {page === "agents" && <HubPage detail={(a) => <AgentPage key={a.id} agent={a} claims={claims} activity={activity} onUpdate={(patch) => update(a.id, patch)} onRule={(r) => setRule(a, r)} onApprove={(ids) => review(ids, "approved")} onReview={review} onEdit={editProposal} onChat={sendChat} dir={dir} goClaims={goClaims} notify={notify} />} agents={agents} claims={claims} activity={activity} onOpen={(a) => setPage("agent:" + a.id)} onNew={() => setPage("agent:new")} onPause={togglePause} onDelete={removeAgent} />}
+            {page === "agents" && <HubPage onAddTemplate={addTemplate} mine={claims.filter((c) => c.assignee === ME && !myGone.includes(c.id))} solved={myGone.length} onOpenToday={() => setPage("claims")} agents={agents} claims={claims} activity={activity} onOpen={(a) => setPage("agent:" + a.id)} onNew={() => setPage("agent:new")} onPause={togglePause} onDelete={removeAgent} />}
             {page === "agent:new" && <AgentBuilder key={builderSeed ? builderSeed.id : "blank"} seed={builderSeed} agents={agents} onCreate={create} onCancel={() => setPage("agents")} />}
           </main>
         </div>
@@ -1763,7 +1970,7 @@ const CSS = `
 --r-soft:8px;--r-semi:4px;--r-extra:12px;--r-card:16px;--r-full:100px;
 /* Tokens added for this screen (sampled from the recording) */
 --imp-bg:rgba(17,50,238,.2);--avatar-bg:#6068fd;--dot-peach:#ebddd3;--dot-blue:#b9c1f3;
---shadow-sticky:rgba(0,0,0,.12);--danger:#b52b2b;--danger-sub:rgba(181,43,43,.1);--info:#416bcf;--info-sub:rgba(65,107,207,.1);--info-bd:rgba(65,107,207,.4);--neutral-sub:rgba(89,89,89,.1);--success:#2a9953;--em-orange:#c27023;--em-blue:#405bf2;--em-green:#2a9953;--em-purple:#ae42b0;--orange:#c27023;--orange-sub:rgba(194,112,35,.1);--pop-shadow:rgba(0,0,0,.18);--scrim:rgba(0,0,0,.35);--success-fg:#228048;--ai-from:#f9fafe;--ai-to:#edf0ff;
+--shadow-sticky:rgba(0,0,0,.12);--danger:#b52b2b;--danger-sub:rgba(181,43,43,.1);--info:#416bcf;--info-sub:rgba(65,107,207,.1);--info-bd:rgba(65,107,207,.4);--neutral-sub:rgba(89,89,89,.1);--success:#2a9953;--em-orange:#c27023;--em-blue:#405bf2;--em-green:#2a9953;--em-purple:#ae42b0;--orange:#c27023;--orange-sub:rgba(194,112,35,.1);--pop-shadow:rgba(0,0,0,.18);--scrim:rgba(0,0,0,.35);--success-fg:#228048;--bg1:#fafafa;--tonal:#f1f3fe;--ai-from:#f9fafe;--ai-to:#edf0ff;
 --av-green:#5fb86b;--av-teal:#58c7b8;--av-orange:#f5a03a;--av-red:#e85d5f;--av-cyan:#55c7d6;--av-pink:#d16fd4;--av-purple:#7268d2;--av-blue:#5b8fe8;--av-lilac:#a99ad8;--av-indigo:#7f8bd0;--av-lime:#8fcb6a;--av-mint:#8fddd0;--toast-bg:#141414;--toast-fg:#e5e5e5;--skel:rgba(0,0,0,.07);
 font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--fg1);font-size:13px;line-height:1.6;height:100vh;display:flex;flex-direction:column;background:var(--tonal);font-variant-numeric:tabular-nums;position:relative}
 .app *{box-sizing:border-box}
@@ -1843,9 +2050,9 @@ font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--fg
 .cltbl .asg-h,.cltbl .asg-c{position:sticky;right:0;z-index:2;width:92px;min-width:92px;padding:0 8px;box-shadow:-6px 0 8px -6px var(--shadow-sticky);text-align:center}
 .cltbl th.asg-h{z-index:4;border-right:0}
 .cltbl td.asg-c .bar{margin:0 auto}
-.clgrp td{height:45px;padding:0;background-color:var(--base)}
+.clgrp td{height:44px;padding:0;background-color:var(--bg1)}
 .clgrp td.asg-c{padding:0 8px}.clgrp td.exp .ibtn{margin:0 auto}
-.clgin{position:sticky;left:76px;display:flex;align-items:center;gap:8px;height:45px;padding:0;width:max-content;max-width:calc(100vw - 460px)}
+.clgin{position:sticky;left:76px;display:flex;align-items:center;gap:8px;height:44px;padding:0;width:max-content;max-width:calc(100vw - 460px)}
 .clgin .ibtn svg{transition:transform .12s}.clgin .ibtn svg.rot{transform:rotate(-90deg)}
 .clrow:hover td{background-image:linear-gradient(var(--d5),var(--d5))}
 .clrow.picked td{background-image:linear-gradient(var(--accent-sub),var(--accent-sub))}
@@ -1863,7 +2070,14 @@ font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--fg
 .tag.filled{height:28px;padding:0 8px;background:var(--bg);color:var(--fg1)}
 .chip{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border-radius:var(--r-soft);background:var(--d5);color:var(--fg1);font-weight:500;white-space:nowrap;max-width:620px;min-width:0}
 .chip:not(.amt){overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:28px}
-.chip.amt{background:var(--neutral-sub);flex:none}
+.chip.amt{background:var(--d5);flex:none;display:inline-block;position:relative;line-height:28px;white-space:pre}
+.amt-n{font-weight:500;color:var(--fg1)}.amt-s,.amt-c{color:var(--fg2);font-weight:500}
+.chip.amt:hover .amt-c{color:var(--fg1)}
+.amt-x{display:inline-block;vertical-align:top;max-width:0;opacity:0;overflow:hidden;color:var(--fg2);font-weight:400;transition:max-width .28s ease,opacity .2s ease}
+.chip.amt:hover .amt-x{max-width:96px;opacity:1}
+@media (prefers-reduced-motion:reduce){.amt-x{transition:none}}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.gline{min-width:0;font-size:13px;color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tag.filled,.chipset{flex:none}
 .chipset{display:inline-flex}.chipset .chip+.chip{margin-left:-6px;box-shadow:0 0 0 2px var(--base)}
 .plink{border:0;background:transparent;padding:0;color:var(--fg-accent);font-size:13px;cursor:pointer}.plink:hover{text-decoration:underline;text-underline-offset:2px}
@@ -1883,29 +2097,30 @@ font-family:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;color:var(--fg
 
 /* My Claims: expandable claims, summary and a two-step suggested action path (Figma Claims, 10881:131379) */
 .clwrap{container-type:inline-size}
+.mytbl tr.clrow td.exp{padding:0 0 0 6px;text-align:left}.mytbl tr.clrow td.exp .ibtn{margin:0 -2px 0 4px}
 .mytbl .exp .ibtn svg{transition:transform .12s}.mytbl .exp .ibtn svg.rot{transform:rotate(-90deg)}
 .myctx td{padding:0;height:auto;background-color:var(--base);border-bottom:1px solid var(--bs);white-space:normal}
-.mypanel{position:sticky;left:0;width:calc(100cqw - 2px);box-sizing:border-box;display:flex;gap:32px;padding:16px 20px 20px;background:linear-gradient(180deg,var(--ai-from),var(--ai-to));box-shadow:inset 6px 0 0 #e5e5e5} /* the 6px stripe of the claim row continues down the expanded panel */
+.mypanel{position:sticky;left:0;width:calc(100cqw - 2px);box-sizing:border-box;display:flex;gap:24px;padding:16px 16px 16px 22px;background:var(--bg1);box-shadow:inset 6px 0 0 #e5e5e5} /* the 6px stripe of the claim row continues down the expanded panel */
 .mp-l{flex:1 1 0;min-width:0}.mp-r{flex:1 1 0;min-width:0;display:flex;flex-direction:column}
 .mp-l h3{margin:0;font-size:13px;font-weight:500;color:var(--fg1);line-height:21px}
-.mp-l p{margin:0 0 8px;color:var(--fg2);line-height:21px;text-wrap:pretty}.mp-l p:last-child{margin-bottom:0}
+.mp-l p{margin:0;color:var(--fg2);line-height:21px;text-wrap:pretty}
 .xlink{color:var(--fg-accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px}.xlink svg{display:inline-block;margin-left:2px;vertical-align:-1px}.nw{white-space:nowrap}
 .b-strong{font-weight:500;color:var(--fg1)}
-.st{position:relative;display:grid;grid-template-columns:28px minmax(0,1fr);gap:8px;padding-bottom:14px}
+.st{position:relative;display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;padding-bottom:16px}
 .st:last-child{padding-bottom:0}
-.st:not(:last-child)::before{content:"";position:absolute;left:13.5px;top:26px;bottom:2px;width:1px;background:var(--bst)}
-.st-emb{display:grid;place-items:start center;padding-top:1px}
-.st-t{font-weight:500;color:var(--fg1);line-height:21px;margin-bottom:8px}
-.st-card{background:var(--base);border:1px solid var(--bs);border-radius:var(--r-soft);padding:12px 16px}
-.st-card p{margin:0;color:var(--fg1);line-height:21px}
-.st-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;flex-wrap:wrap}
-.st-chg{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;font-size:12px;color:var(--fg1)}
-.st-chip{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;border-radius:var(--r-soft);background:var(--d5);color:var(--fg1);font-size:12px;border:0;line-height:18px}.st-chip s{color:var(--fg2);margin:0 4px}
+.st:not(:last-child)::before{content:"";position:absolute;left:9.5px;top:26px;bottom:0;width:1px;background:var(--bs)}
+.st-emb{display:grid;place-items:start center;padding-top:2px}
+.st-t{font-weight:500;color:var(--fg1);line-height:21px;margin-bottom:2px}
+.st-card{background:var(--tonal);border:1px solid var(--bs);border-radius:8px;padding:8px 12px 12px;box-shadow:0 2px 4px rgba(0,0,0,.08)}
+.st-card p{margin:0;color:#1a1a1a;line-height:21px}
+.st-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:8px;flex-wrap:wrap}
+.st-chg{display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0;font-size:11px;font-weight:500;color:#1a1a1a;padding-bottom:4px}
+.st-chip{display:inline-flex;align-items:center;min-height:20px;padding:0 8px;border-radius:8px;background:rgba(89,89,89,.1);color:var(--fg1);font-size:11px;font-weight:400;border:0;line-height:18px}.st-chip s{color:var(--fg2);margin:0 4px}
 button.st-more{cursor:pointer}button.st-more:hover{background:var(--d10)}
-.st-acts{display:flex;align-items:center;gap:4px;flex:none}
+.st-acts{display:flex;align-items:center;gap:8px;flex:none}
 .vbtn{width:28px;height:28px;border:0;border-radius:var(--r-soft);background:transparent;color:var(--fg2);display:grid;place-items:center;padding:0}.vbtn:hover{background:var(--d5)}.vbtn.on{background:var(--accent-sub);color:var(--fg-accent)}.vbtn.note{color:var(--fg-accent)}
-.st-sep{width:1px;height:20px;background:var(--bs);margin:0 6px}
-.st-card.slim{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:8px 12px 8px 16px}
+.st-sep{width:1px;height:28px;background:#e6e6e6;margin:0}
+.st-card.slim{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;padding:8px 12px}
 .st-slim{display:inline-flex;align-items:center;gap:6px;color:var(--fg1)}
 .st-card.slim.done .st-slim svg{color:var(--success)}.st-ok{color:var(--success);font-weight:500}
 .btn.off{background:var(--d10);border-color:transparent;color:var(--fg-dis);cursor:default}
@@ -1951,6 +2166,32 @@ button.st-more{cursor:pointer}button.st-more:hover{background:var(--d10)}
 .clr-stat span{color:var(--fg3)}.clr-stat b{display:block;margin-top:2px;font-size:22px;line-height:30px;font-weight:600;color:var(--fg1)}.clr-stat small{display:block;margin-top:2px;color:var(--fg3);font-size:12px}
 .clr-chips{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:16px 0 24px}
 .clr-chip{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:var(--r-full);background:var(--d5);color:var(--fg2);font-size:12px}.clr-chip b{font-weight:600;color:var(--fg1)}
+
+
+/* UI pass: group header hierarchy, group boundaries, panel spacing, action focus, quiet controls, error state, keyboard */
+.gline{margin-left:4px}.gline b{font-weight:500;color:var(--fg1)}
+.mytbl tr.clgrp td{position:sticky;top:28px;z-index:2}
+.mytbl tr.clgrp td.asg-c{z-index:3}
+.mytbl .grpgap td{height:10px;padding:0;background:var(--base);border-bottom:0}
+.mytbl td.stripe{box-shadow:inset 6px 0 0 var(--accent)}
+.mytbl .exp .ibtn{scroll-margin-top:84px}
+.mp-l{max-width:75ch}.mp-r{max-width:760px}
+.mp-l h3{margin:0;color:#454545}.mp-l h3 + p{margin-top:2px}.mp-l p + h3{margin-top:16px}
+.mp-l p{color:#5c5c5c}
+.mypanel{box-shadow:inset 6px 0 0 var(--accent)}
+.mypanel:focus-visible{outline-offset:-3px}
+.st-t{font-size:14px;font-weight:600}
+.st-active .st-card{border-color:rgba(17,50,238,.35);box-shadow:0 2px 8px rgba(17,50,238,.14)}
+.st-card.slim{box-shadow:none}
+.st-active .btn.primary{height:32px;padding:0 20px;font-size:14px}
+.st-active .vbtn{opacity:.5;transition:opacity .12s}
+.st-active .st-card:hover .vbtn,.st-active .st-card:focus-within .vbtn,.st-active .vbtn.on{opacity:1}
+.vbtn.note{color:var(--fg2)}.vbtn.note:hover{color:var(--fg-accent)}
+.st-chg{font-size:12px}.st-chip{font-size:12px;min-height:22px;line-height:20px}
+.st-chip.st-more{background:transparent;box-shadow:inset 0 0 0 1px var(--bst);gap:2px;padding:0 6px 0 8px}.st-chip.st-more svg{transition:transform .12s}.st-chip.st-more svg.up{transform:rotate(180deg)}
+.empty.err{color:var(--fg2)}.empty.err .err-ic{width:40px;height:40px;border-radius:50%;background:var(--danger-sub);color:var(--danger);display:grid;place-items:center}
+.skip{position:absolute;left:12px;top:-48px;z-index:30;height:32px;display:inline-flex;align-items:center;padding:0 12px;border-radius:var(--r-soft);background:var(--base);color:var(--fg-accent);box-shadow:0 0 0 2px var(--accent),0 4px 12px rgba(0,0,0,.12);text-decoration:none}
+.skip:focus{top:8px}
 
 .asgb{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:transparent;display:inline-grid;place-items:center;color:var(--fg2)}
 .asgb.empty{border:1px solid var(--bst);background:var(--base)}.asgb:hover{box-shadow:0 0 0 2px var(--accent-sub)}.asgb.empty:hover{background:var(--d5)}
@@ -2054,7 +2295,7 @@ button.st-more{cursor:pointer}button.st-more:hover{background:var(--d10)}
 
 /* claim panel (Claims experience only) */
 /* agents hub */
-.hub{max-width:1240px;margin:0 auto;padding:32px 40px 56px}
+.hub{width:100%;box-sizing:border-box;max-width:1240px;margin:0 auto;padding:32px 40px 56px}
 .hub-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}.hub-top h1{font-size:20px;font-weight:600;margin:0}
 .hub-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:24px}
 .hub-stat{border:1px solid var(--bs);border-radius:var(--r-card);padding:16px 20px;display:flex;flex-direction:column}
@@ -2083,6 +2324,45 @@ button.st-more{cursor:pointer}button.st-more:hover{background:var(--d10)}
 .hc-new{border:1px dashed var(--bst);background:transparent;align-items:center;justify-content:center;gap:4px;min-height:236px;cursor:pointer;color:var(--fg1)}.hc-new:hover{background:var(--d5)}.hc-new .hub-ic{margin-bottom:8px}.hc-new b{font-weight:500}
 .ag-pill.paused{background:var(--neutral-sub);color:var(--fg2)}
 @media (max-width:1200px){.hub-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.hub-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* hub (Figma reference): six stats, status tabs, Yours and Discover, expandable agent rows */
+.hub-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+.hub-top h1{font-size:24px;font-weight:600}
+.hub-h2{margin:32px 0 12px;font-size:16px;font-weight:600}
+.hub-bar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:8px}
+.hub-ftabs{display:flex;align-items:center;gap:4px}
+.seg{display:inline-flex;padding:2px;border-radius:8px;background:var(--solid2);border:1px solid var(--bs)}
+.seg button{height:28px;padding:0 14px;border:0;border-radius:6px;background:transparent;color:var(--fg2)}
+.seg button.on{background:var(--base);color:var(--fg-accent);box-shadow:0 0 0 1px var(--bs)}
+.hx-list{display:flex;flex-direction:column}
+.hx-item{border-bottom:1px solid var(--bs)}.hx-item:last-child{border-bottom:0}
+.hx-row{display:flex;align-items:center;gap:16px;padding:16px 0}
+.hx-main{flex:1;min-width:0;display:flex;align-items:center;gap:16px;border:0;background:transparent;text-align:left;padding:0;border-radius:var(--r-soft);cursor:pointer}
+.hx-main.static{cursor:default}
+.hx-main:not(.static):hover .hx-txt b{color:var(--fg-accent)}
+.hx-tile{width:44px;height:44px;border-radius:var(--r-soft);border:1px solid var(--bs);background:var(--bg1);display:grid;place-items:center;flex:none}
+.hx-txt{min-width:0;display:flex;flex-direction:column;gap:2px}.hx-txt b{font-weight:500;color:var(--fg1)}.hx-txt span{color:var(--fg2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hc-st.waiting i{background:var(--success)}
+
+/* hub rows: tile, badge and dot, metrics (your screenshot) */
+.hx-tile{position:relative;width:48px;height:48px;border-radius:12px;color:var(--fg1)}
+.hx-name{font-size:15px;font-weight:500;color:var(--fg1)}
+.hx-txt .hx-m{display:flex;flex-wrap:wrap;column-gap:24px;row-gap:0;white-space:normal;overflow:visible}
+.hx-m i{font-style:normal;color:var(--fg3)}.hx-m b{font-weight:500;color:var(--fg1)}
+.hx-desc{color:var(--fg2)}
+.hx-badge{position:absolute;top:-8px;right:-8px;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:var(--accent);color:#fff;font-size:12px;font-weight:500;line-height:22px;text-align:center;box-shadow:0 0 0 2px var(--base)}
+.hx-dot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 2px var(--base)}
+
+.hx-panels{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;padding:0 0 20px 60px}
+.hx-pn{background:var(--bg1);border-radius:var(--r-card);padding:16px;min-height:140px}
+.hx-pn h3{margin:0 0 8px;font-size:13px;font-weight:500;color:var(--fg1)}
+.hx-pn p{margin:0 0 8px;color:var(--fg2);line-height:21px}
+.hx-ev,.hx-why{list-style:none;margin:0 0 8px;padding:0;display:flex;flex-direction:column;gap:8px}
+.hx-ev li{display:flex;flex-direction:column;color:var(--fg1)}.hx-ev em{font-style:normal;color:var(--fg3);font-size:12px}
+.hx-why li{display:flex;align-items:baseline;gap:8px;color:var(--fg2)}.hx-why b{min-width:24px;font-weight:600;color:var(--fg1)}
+.hx-ft{grid-column:1 / -1;display:flex;gap:8px;justify-content:flex-end}
+@media (max-width:900px){.hub-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.hx-panels{grid-template-columns:1fr;padding-left:0}}
 
 /* agent builder */
 .canvas:has(> .bld){overflow:hidden}
