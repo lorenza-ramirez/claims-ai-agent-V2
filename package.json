@@ -1,9 +1,8 @@
 {
-  "name": "air-claims-prototype",
-  "version": "0.4.0",
+  "name": "claims-shell-prototype",
   "private": true,
+  "version": "1.0.0",
   "type": "module",
-  "description": "Clickable prototype of the Air Hub, My Claims worklist, agent pages and agent builder. Synthetic data only.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,12 +10,12 @@
   },
   "dependencies": {
     "lucide-react": "0.383.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^5.4.11"
+    "@vitejs/plugin-react": "4.3.4",
+    "vite": "5.4.11"
   },
   "engines": {
     "node": ">=18"
